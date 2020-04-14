@@ -13,21 +13,29 @@ from kafka import KafkaConsumer, KafkaProducer
 
 class CallGraphGenerator:
     def __init__(self, out_topic, err_topic, producer, release):
+        self.out_topic = out_topic
+        self.err_topic = err_topic
+        self.producer = producer
+        self.release = release
+
         self.release_msg = release
         self.product = release['product']
         self.version = release['version']
         self.version_timestamp = release['version-timestamp']
 
         self.out_root = Path("callgraphs")
-        self.out_name = Path("cg.json")
-        self.out_file = self.out_root/self.product/self.version/self.out_name
+        self.out_dir = self.out_root/self.product/self.version
+        if not self.out_dir.exists():
+            self.out_dir.mkdir(parents=True)
+
+        self.out_file = self.out_dir/'cg.json'
 
         self.downloads_dir = Path("downloads")
         self.untar_dir = Path("untar")
 
         self.error_msg = {
             'product': self.product,
-            'version': sefl.version,
+            'version': self.version,
             'datetime': str(datetime.datetime.now()),
             'phase': '',
             'message': ''
@@ -53,21 +61,21 @@ class CallGraphGenerator:
         cmd = [
             'pip3',
             'download',
-            '--nobinary=:all:',
+            '--no-binary=:all:',
             '--no-deps',
-            '-d', self.downloads_dir.resolve().as_posix(),
+            '-d', self.downloads_dir.as_posix(),
             "{}=={}".format(self.product, self.version)
         ]
         try:
             out, err = self._execute(cmd)
-        except:
-            self._format_error(err_phase, err)
+        except Exception as e:
+            self._format_error(err_phase, str(e))
             raise CallGraphGeneratorError()
 
         items = list(self.downloads_dir.iterdir())
         if len(items) != 1:
             self._format_error(err_phase,\
-                'Downloaded more than one item {}'.format(str(items)))
+                'Did not download only one item {}'.format(str(items)))
             raise CallGraphGeneratorError()
 
         return items[0]
@@ -77,20 +85,20 @@ class CallGraphGenerator:
         err_phase = 'decompress'
 
         self._create_dir(self.untar_dir)
-        _, file_ext = comp_path.suffix()
+        file_ext = comp_path.suffix
 
         # TODO: More filetypes may exist
-        if file_ext == 'gz':
+        if file_ext == '.gz':
             cmd = [
                 'tar',
-                '-xvf', comp_path.resolve().as_posix(),
-                '-C', self.untar_dir.resolve().as_posix()
+                '-xvf', comp_path.as_posix(),
+                '-C', self.untar_dir.as_posix()
             ]
-        elif file_ext == 'zip':
+        elif file_ext == '.zip':
             cmd = [
                 'unzip',
-                '-d', self.untar_dir.resolve().as_posix(),
-                comp.resolve().as_posix()
+                '-d', self.untar_dir.as_posix(),
+                comp_path.as_posix()
             ]
         else:
             self._format_error(err_phase, 'Invalid extension {}'.format(file_ext))
@@ -98,8 +106,8 @@ class CallGraphGenerator:
 
         try:
             out, err = self._execute(cmd)
-        except:
-            self._format_error(err_phase, err)
+        except Exception as e:
+            self._format_error(err_phase, str(e))
             raise CallGraphGeneratorError()
 
         items = list(self.untar_dir.iterdir())
@@ -115,42 +123,41 @@ class CallGraphGenerator:
         files_list = self._get_python_files(package_path)
         cmd = [
             'pycg',
-            '--package', package_path.resolve().as_posix(),
+            '--fasten',
+            '--package', package_path.as_posix(),
             '--product', self.product,
             '--version', self.version,
             '--forge', 'PyPI',
             '--timestamp', self.version_timestamp,
-            '--fasten',
-            files_list,
-            '--output', self.out_file.resolve().as_posix()
-        ]
+            '--output', self.out_file.as_posix()
+        ] + files_list
 
         try:
             out, err = self._execute(cmd)
-        except:
-            self._format_error('generation', err)
+        except Exception as e:
+            self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
 
         return self.out_file
 
     def _get_python_files(self, package):
-        return [x.resolve().as_posix() for x in package.glob("**/*.py", recursive=True)]
+        return [x.resolve().as_posix().strip() for x in package.glob("**/*.py")]
 
     def _produce_callgraph(self, cg_path):
         # produce call graph to kafka topic
         if not cg_path.exists():
             self._format_error('producer',\
-                'Call graph path does not exist {}'.format(cg_path.resolve().as_posix()))
+                'Call graph path does not exist {}'.format(cg_path.as_posix()))
             raise CallGraphGeneratorError()
 
-        with open(cg_path.resolve.as_posix(), "r") as f:
+        with open(cg_path.as_posix(), "r") as f:
             cg = f.read()
 
         self.producer.send(self.out_topic, cg)
 
     def _produce_error(self):
         # produce error to kafka topic
-        self.producer.send(self.error_topic, json.dumps(self.error_msg))
+        self.producer.send(self.err_topic, json.dumps(self.error_msg))
 
     def _execute(self, opts):
         cmd = sp.Popen(opts, stdout=sp.PIPE, stderr=sp.PIPE)
@@ -159,13 +166,14 @@ class CallGraphGenerator:
     def _format_error(self, phase, message):
         self.error_msg['phase'] = phase
         self.error_msg['message'] = message
+        print (self.error_msg)
 
     def _clean_dirs(self):
         # clean up directories created
         if self.downloads_dir.exists():
-            shutil.rmtree(self.downloads_dir)
+            shutil.rmtree(self.downloads_dir.as_posix())
         if self.untar_dir.exists():
-            shutil.rmtree(self.untar_dir)
+            shutil.rmtree(self.untar_dir.as_posix())
 
     def _create_dir(self, path):
         if not path.exists():
@@ -185,7 +193,7 @@ class PyPIConsumer:
 
     def consume(self):
         self.consumer = KafkaConsumer(
-            in_topic,
+            self.in_topic,
             bootstrap_servers=self.bootstrap_servers,
             # consume earliest available messages
             auto_offset_reset='earliest',
@@ -196,7 +204,7 @@ class PyPIConsumer:
         )
         self.producer = KafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
-            value_deserializer=lambda x: x.encode('utf-8')
+            value_serializer=lambda x: x.encode('utf-8')
         )
 
         for message in self.consumer:
@@ -206,7 +214,7 @@ class PyPIConsumer:
                 release
             ))
 
-            generator = CallGraphGenerator(out_topic, err_topic, self.producer, release)
+            generator = CallGraphGenerator(self.out_topic, self.err_topic, self.producer, release)
             generator.generate()
 
 def get_parser():

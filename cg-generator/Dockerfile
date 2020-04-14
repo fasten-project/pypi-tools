@@ -13,7 +13,7 @@ RUN pip3 install kafka-python
 RUN mkdir /cggen
 
 # move files
-COPY ./PyCG/ /pycg
+COPY ./pycg/ /pycg
 COPY ./entrypoint.py /cggen/entrypoint.py
 
 # install pycg and make wrapper executable
