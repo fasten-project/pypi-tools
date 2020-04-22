@@ -1,11 +1,13 @@
 Kafka Call Graph Generator
 ==========================
 
-Pulls a list of packages from a kafka topic
-and generates their call graphs.
-Call graphs and errors are put into another kafka topic.
+Consumes PyPI information about a package from a kafka topic, and
+produces its call graph into another kafka topic.
 
-Usage:
+Usage
+=====
+
+A copy of PyCG is required. It should be stored in a directory named `pycg`.
 
 ```
 >>> docker build -t pycg-gen .
@@ -16,10 +18,23 @@ Usage:
         <comma_separated_servers> <consumer_group> <sleep_timeout>
 ```
 
+The list of parameters are:
+- `<input_topic>`: The kafka topic from which PyPI packaging information
+  will be consumed.
+- `<cg_topic>`: The kafka topic into which the producer will store call graphs.
+- `<error_topic>`: The kafka topic into which the producer will store call
+  graph generation errors.
+- `<comma_separated_servers>`: The list of kafka servers in use, separated by
+  commas.
+- `<consumer_group>`: The group into which the consumer is assigned.
+- `<sleep_timeout>`: How long will the consumer sleep before trying to consume
+  new data.
+
 Testing
 -------
 
-Make sure kafka is downloaded and switch to its directory.
+Make sure kafka is downloaded and switch to its installation directory.
+
 ```
 # Start server
 bin/zookeeper-server-start.sh config/zookeeper.properties &
@@ -39,3 +54,8 @@ docker run \
     -it pycg-gen package_list call_graphs error\
     localhost:9092 mygroup 1
 ```
+
+After exiting,
+two call graphs should be stored in the `call_graphs` topic,
+while a genaration error (regarding versioning) should be
+stored in the `error` topic.
