@@ -21,7 +21,8 @@ class CallGraphGenerator:
         self.release_msg = release
         self.product = release['product']
         self.version = release['version']
-        self.version_timestamp = release['version-timestamp']
+        self.version_timestamp = release['version_timestamp']
+        self.requires_dist = release["requires_dist"]
 
         self.out_root = Path("callgraphs")
         self.out_dir = self.out_root/self.product/self.version
@@ -151,9 +152,16 @@ class CallGraphGenerator:
             raise CallGraphGeneratorError()
 
         with open(cg_path.as_posix(), "r") as f:
-            cg = f.read()
+            cg = json.load(f)
 
-        self.producer.send(self.out_topic, cg)
+        # PyCG must produce a call graph with the key "depset"
+        # The key "depset" must have the same format that comes from the input topic
+        # if we have a requires_dist from the input topic
+        # replace the one that pycg found from the requirements.txt file
+        if len(self.requires_dist):
+            cg["depset"] = self.requires_dist
+
+        self.producer.send(self.out_topic, json.dumps(cg))
 
     def _produce_error(self):
         # produce error to kafka topic

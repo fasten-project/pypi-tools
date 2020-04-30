@@ -4,6 +4,8 @@ import argparse
 import datetime
 import dateutil.parser
 
+from pkg_resources import Requirement
+
 from kafka import KafkaConsumer, KafkaProducer
 
 class PyPIFilter:
@@ -84,11 +86,13 @@ class PyPIFilter:
     def _extract(self, package):
         try:
             pkg_name = package["project"]["info"]["name"]
+            requires_dist = package["project"]["info"]["requires_dist"]
             releases = package["project"]["releases"]
         except KeyError:
             print ("Could not retrieve packaging info from {}".format(json.dumps(package)))
             return
 
+        requires_dist = self._parse_requires(requires_dist)
         for release in releases:
             if not release.get("version", None) or\
                     not release.get("releases", None):
@@ -113,9 +117,77 @@ class PyPIFilter:
             entry = {
                 "product": pkg_name,
                 "version": version,
-                "version-timestamp": ts
+                "version_timestamp": ts,
+                "requires_dist": requires_dist
             }
             yield entry
+
+    def _parse_requires(self, requires):
+        parsed = []
+        for r in requires:
+            req = Requirement.parse(r)
+
+            product = req.name
+            specs = req.specs
+
+            constraints = []
+            def add_range(begin, end):
+                if begin and end:
+                    if begin[1] and end[1]:
+                        constraints.append(f"[{begin[0]}..{end[0]}]")
+                    elif begin[1]:
+                        constraints.append(f"[{begin[0]}..{end[0]})")
+                    elif end[1]:
+                        constraints.append(f"({begin[0]}..{end[0]}]")
+                    else:
+                        constraints.append(f"({begin[0]}..{end[0]})")
+                elif begin:
+                    if begin[1]:
+                        constraints.append(f"[{begin[0]}..]")
+                    else:
+                        constraints.append(f"({begin[0]}..]")
+                elif end:
+                    if end[1]:
+                        constraints.append(f"[..{end[0]}]")
+                    else:
+                        constraints.append(f"[..{end[0]})")
+
+            begin = None
+            end = None
+            for key, val in sorted(specs, key=lambda x: x[1]):
+                # if begin, then it is already in a range
+                if key == "==":
+                    if begin and end:
+                        add_range(begin, end)
+                        begin = None
+                        end = None
+                    if not begin:
+                        constraints.append(f"[{val}]")
+
+                if key == ">":
+                    if end:
+                        add_range(begin, end)
+                        end = None
+                        begin = None
+                    if not begin:
+                        begin = (val, False)
+                if key == ">=":
+                    if end:
+                        add_range(begin, end)
+                        begin = None
+                        end = None
+                    if not begin:
+                        begin = (val, True)
+
+                if key == "<":
+                    end = (val, False)
+                if key == "<=":
+                    end = (val, True)
+            add_range(begin, end)
+
+            parsed.append({"forge": "PyPI", "product": product, "constraints": constraints})
+
+        return parsed
 
 
 def get_parser():
