@@ -10,6 +10,7 @@ Usage
 A copy of PyCG is required. It should be stored in a directory named `pycg`.
 
 ```
+>>> mkdir callgraphs
 >>> docker build -t pycg-gen .
 >>> docker run \
         --mount type=bind,source=$(pwd)/callgraphs,target=/cggen/callgraphs \
@@ -29,6 +30,9 @@ The list of parameters are:
 - `<consumer_group>`: The group into which the consumer is assigned.
 - `<sleep_timeout>`: How long will the consumer sleep before trying to consume
   new data.
+
+Apart from storing the call graphs in the output topic, they will also be
+stored in the `callgraphs` directory mounted on the docker image.
 
 Testing
 -------
