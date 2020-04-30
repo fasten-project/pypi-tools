@@ -129,7 +129,7 @@ class CallGraphGenerator:
             '--product', self.product,
             '--version', self.version,
             '--forge', 'PyPI',
-            '--timestamp', self.version_timestamp,
+            '--timestamp', str(self.version_timestamp),
             '--output', self.out_file.as_posix()
         ] + files_list
 
