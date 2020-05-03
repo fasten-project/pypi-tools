@@ -62,7 +62,7 @@ class CallGraphGenerator:
         cmd = [
             'pip3',
             'download',
-            '--no-binary=:all:',
+            #'--no-binary=:all:',
             '--no-deps',
             '-d', self.downloads_dir.as_posix(),
             "{}=={}".format(self.product, self.version)
@@ -101,6 +101,18 @@ class CallGraphGenerator:
                 '-d', self.untar_dir.as_posix(),
                 comp_path.as_posix()
             ]
+        elif file_ext == '.whl':
+            zip_name = comp_path.with_suffix(".zip")
+            try:
+                comp_path.replace(zip_name)
+            except Exception as e:
+                self._format_error(err_phase, str(e))
+
+            cmd = [
+                'unzip',
+                '-d', self.untar_dir.as_posix(),
+                zip_name.as_posix()
+            ]
         else:
             self._format_error(err_phase, 'Invalid extension {}'.format(file_ext))
             raise CallGraphGeneratorError()
@@ -110,6 +122,14 @@ class CallGraphGenerator:
         except Exception as e:
             self._format_error(err_phase, str(e))
             raise CallGraphGeneratorError()
+
+        # remove non python dirs extracted from '.whl'
+        if file_ext == ".whl":
+            dirs = [d for d in self.untar_dir.iterdir() if d.is_dir()]
+            for d in dirs:
+                nfiles = len(list(d.glob('**/*.py')))
+                if nfiles == 0:
+                    shutil.rmtree(d.as_posix())
 
         items = list(self.untar_dir.iterdir())
         if len(items) != 1:
