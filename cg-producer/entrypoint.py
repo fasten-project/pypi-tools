@@ -28,6 +28,8 @@ class CallGraphGenerator:
         self.elapsed = None
         # lines of code of package
         self.loc = None
+        # maximum resident set size
+        self.max_rss = None
 
         self.out_root = Path("callgraphs")
         self.out_dir = self.out_root/self.product/self.version
@@ -165,24 +167,35 @@ class CallGraphGenerator:
             '--output', self.out_file.as_posix()
         ] + files_list
 
+        timing = [
+            "/usr/bin/time",
+            "-f", "secs=%e\nmem=%M"
+        ]
+
         self.loc = self._get_lines_of_code(files_list)
         try:
-            start = time.time()
-            out, err = self._execute(cmd)
-            self.elapsed = time.time() - start
+            out, err = self._execute(timing + cmd)
         except Exception as e:
             self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
 
+
         if not self.out_file.exists():
             self._format_error('generation', str(err))
             raise CallGraphGeneratorError()
+
+        for l in err.decode('utf-8').splitlines():
+            if l.strip().startswith("secs"):
+                self.elapsed = float(l.split("=")[-1].strip())
+            if l.strip().startswith("mem"):
+                self.max_rss = int(l.split("=")[-1].strip())
+
         return self.out_file
 
     def _get_python_files(self, package):
         return [x.resolve().as_posix().strip() for x in package.glob("**/*.py")]
 
-    def _get_lines_of_code(files_list):
+    def _get_lines_of_code(self, files_list):
         res = 0
         for fname in files_list:
             with open(fname) as f:
@@ -212,6 +225,7 @@ class CallGraphGenerator:
 
         cg["metadata"]["loc"] = self.loc or -1
         cg["metadata"]["time_elapsed"] = self.elapsed or -1
+        cg["metadata"]["max_rss"] = self.max_rss or -1
 
         self.producer.send(self.out_topic, json.dumps(cg))
 
