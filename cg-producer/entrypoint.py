@@ -30,6 +30,8 @@ class CallGraphGenerator:
         self.loc = None
         # maximum resident set size
         self.max_rss = None
+        # number of files in the package
+        self.num_files = None
 
         self.out_root = Path("callgraphs")
         self.out_dir = self.out_root/self.product/self.version
@@ -151,6 +153,10 @@ class CallGraphGenerator:
 
         files_list = self._get_python_files(package_path)
 
+        # get metrics from the files list
+        self.num_files = len(files_list)
+        self.loc = self._get_lines_of_code(files_list)
+
         # if the package path contains an init file
         # then the package is its parent
         if (package_path/"__init__.py").exists():
@@ -172,16 +178,14 @@ class CallGraphGenerator:
             "-f", "secs=%e\nmem=%M"
         ]
 
-        self.loc = self._get_lines_of_code(files_list)
         try:
             out, err = self._execute(timing + cmd)
         except Exception as e:
             self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
 
-
         if not self.out_file.exists():
-            self._format_error('generation', str(err))
+            self._format_error('generation', err.decode('utf-8'))
             raise CallGraphGeneratorError()
 
         for l in err.decode('utf-8').splitlines():
@@ -226,6 +230,7 @@ class CallGraphGenerator:
         cg["metadata"]["loc"] = self.loc or -1
         cg["metadata"]["time_elapsed"] = self.elapsed or -1
         cg["metadata"]["max_rss"] = self.max_rss or -1
+        cg["metadata"]["num_files"] = self.num_files or -1
 
         self.producer.send(self.out_topic, json.dumps(cg))
 
