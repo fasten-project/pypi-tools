@@ -24,6 +24,11 @@ class CallGraphGenerator:
         self.version_timestamp = release['version_timestamp']
         self.requires_dist = release["requires_dist"]
 
+        # elapsed time for generating call graph
+        self.elapsed = None
+        # lines of code of package
+        self.loc = None
+
         self.out_root = Path("callgraphs")
         self.out_dir = self.out_root/self.product/self.version
         if not self.out_dir.exists():
@@ -160,8 +165,11 @@ class CallGraphGenerator:
             '--output', self.out_file.as_posix()
         ] + files_list
 
+        self.loc = self._get_lines_of_code(files_list)
         try:
+            start = time.time()
             out, err = self._execute(cmd)
+            self.elapsed = time.time() - start
         except Exception as e:
             self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
@@ -173,6 +181,14 @@ class CallGraphGenerator:
 
     def _get_python_files(self, package):
         return [x.resolve().as_posix().strip() for x in package.glob("**/*.py")]
+
+    def _get_lines_of_code(files_list):
+        res = 0
+        for fname in files_list:
+            with open(fname) as f:
+                res += sum(1 for l in f if l.rstrip())
+
+        return res
 
     def _produce_callgraph(self, cg_path):
         # produce call graph to kafka topic
@@ -190,6 +206,12 @@ class CallGraphGenerator:
         # replace the one that pycg found from the requirements.txt file
         if len(self.requires_dist):
             cg["depset"] = self.requires_dist
+
+        if not cg.get("metadata"):
+            cg["metadata"] = {}
+
+        cg["metadata"]["loc"] = self.loc or -1
+        cg["metadata"]["time_elapsed"] = self.elapsed or -1
 
         self.producer.send(self.out_topic, json.dumps(cg))
 
