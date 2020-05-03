@@ -141,7 +141,14 @@ class CallGraphGenerator:
 
     def _generate_callgraph(self, package_path):
         # call pycg using `package`
+
         files_list = self._get_python_files(package_path)
+
+        # if the package path contains an init file
+        # then the package is its parent
+        if (package_path/"__init__.py").exists():
+            package_path = package_path.parent
+
         cmd = [
             'pycg',
             '--fasten',
