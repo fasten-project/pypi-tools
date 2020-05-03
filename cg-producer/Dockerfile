@@ -5,7 +5,8 @@ FROM debian:stable
 RUN apt -yqq update && apt install -yqq\
                         python3\
                         python3-pip\
-                        unzip
+                        unzip\
+			time
 
 RUN pip3 install kafka-python
 
