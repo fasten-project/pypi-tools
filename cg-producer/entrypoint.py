@@ -166,6 +166,9 @@ class CallGraphGenerator:
             self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
 
+        if not self.out_file.exists():
+            self._format_error('generation', str(err))
+            raise CallGraphGeneratorError()
         return self.out_file
 
     def _get_python_files(self, package):
