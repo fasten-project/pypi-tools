@@ -57,6 +57,7 @@ class CallGraphGenerator:
             package = self._decompress(comp)
             cg_path = self._generate_callgraph(package)
             self._produce_callgraph(cg_path)
+            self._unlink_callgraph(cg_path)
         except CallGraphGeneratorError:
             self._produce_error()
         finally:
@@ -233,6 +234,13 @@ class CallGraphGenerator:
         cg["metadata"]["num_files"] = self.num_files or -1
 
         self.producer.send(self.out_topic, json.dumps(cg))
+
+    def _unlink_callgraph(self, cg_path):
+        if not cg_path.exists():
+            self._format_error('deleter',
+                'Call graph path does not exist {}'.format(cg_path.as_posix()))
+            raise CallGraphGeneratorError()
+        cg_path.unlink()
 
     def _produce_error(self):
         # produce error to kafka topic
