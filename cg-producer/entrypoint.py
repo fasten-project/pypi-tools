@@ -46,6 +46,8 @@ class CallGraphGenerator:
         self.error_msg = {
             'product': self.product,
             'version': self.version,
+            'version_timestamp': self.version_timestamp,
+            'requires_dist': self.requires_dist,
             'datetime': str(datetime.datetime.now()),
             'phase': '',
             'message': ''
