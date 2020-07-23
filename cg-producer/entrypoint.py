@@ -24,6 +24,9 @@ class CallGraphGenerator:
         self.version_timestamp = release['version_timestamp']
         self.requires_dist = release["requires_dist"]
 
+        self.plugin_name = "PyCG"
+        self.plugin_version = "0.0.1"
+
         # elapsed time for generating call graph
         self.elapsed = None
         # lines of code of package
@@ -235,7 +238,15 @@ class CallGraphGenerator:
         cg["metadata"]["max_rss"] = self.max_rss or -1
         cg["metadata"]["num_files"] = self.num_files or -1
 
-        self.producer.send(self.out_topic, json.dumps(cg))
+        output = dict(
+                payload=cg,
+                plugin_name=self.plugin_name,
+                plugin_version=self.plugin_version,
+                input=self.release,
+                created_at=time.time()
+        )
+
+        self.producer.send(self.out_topic, json.dumps(output))
 
     def _unlink_callgraph(self, cg_path):
         if not cg_path.exists():
@@ -246,7 +257,14 @@ class CallGraphGenerator:
 
     def _produce_error(self):
         # produce error to kafka topic
-        self.producer.send(self.err_topic, json.dumps(self.error_msg))
+        output = dict(
+            plugin_name=self.plugin_name,
+            plugin_version=self.plugin_version,
+            input=self.release,
+            created_at=time.time(),
+            err=self.error_message
+        )
+        self.producer.send(self.err_topic, json.dumps(output))
 
     def _execute(self, opts):
         cmd = sp.Popen(opts, stdout=sp.PIPE, stderr=sp.PIPE)
