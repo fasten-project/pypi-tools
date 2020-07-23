@@ -68,6 +68,9 @@ class CallGraphGenerator:
         finally:
             self._clean_dirs()
 
+    def _get_now_ts(self):
+        return int(datetime.datetime.now().timestamp())
+
     def _download(self):
         # Download tar into self.downloads_dir directory
         # return compressed file location
@@ -243,7 +246,7 @@ class CallGraphGenerator:
                 plugin_name=self.plugin_name,
                 plugin_version=self.plugin_version,
                 input=self.release,
-                created_at=time.time()
+                created_at=self._get_now_ts()
         )
 
         self.producer.send(self.out_topic, json.dumps(output))
@@ -261,7 +264,7 @@ class CallGraphGenerator:
             plugin_name=self.plugin_name,
             plugin_version=self.plugin_version,
             input=self.release,
-            created_at=time.time(),
+            created_at=self._get_now_ts(),
             err=self.error_msg
         )
         self.producer.send(self.err_topic, json.dumps(output))
