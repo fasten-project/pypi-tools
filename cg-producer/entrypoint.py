@@ -262,7 +262,7 @@ class CallGraphGenerator:
             plugin_version=self.plugin_version,
             input=self.release,
             created_at=time.time(),
-            err=self.error_message
+            err=self.error_msg
         )
         self.producer.send(self.err_topic, json.dumps(output))
 
