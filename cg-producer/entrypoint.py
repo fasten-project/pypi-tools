@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import kafka
 import shutil
 import argparse
 import datetime
@@ -302,12 +303,13 @@ class CallGraphGeneratorError(Exception):
 
 class PyPIConsumer:
     def __init__(self, in_topic, out_topic, err_topic,\
-                    bootstrap_servers, group):
+                    bootstrap_servers, group, poll_interval):
         self.in_topic = in_topic
         self.out_topic = out_topic
         self.err_topic = err_topic
         self.bootstrap_servers = bootstrap_servers.split(",")
         self.group = group
+        self.poll_interval = poll_interval
 
     def consume(self):
         self.consumer = KafkaConsumer(
@@ -318,15 +320,24 @@ class PyPIConsumer:
             enable_auto_commit=True,
             group_id=self.group,
             # messages are raw bytes, decode
-            value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+            value_deserializer=lambda x: json.loads(x.decode('utf-8')),
+            max_poll_interval_ms=self.poll_interval
         )
         self.producer = KafkaProducer(
             bootstrap_servers=self.bootstrap_servers,
             value_serializer=lambda x: x.encode('utf-8')
         )
 
+        generator = None
         for message in self.consumer:
-            self.consumer.commit()
+            try:
+                self.consumer.commit()
+            except kafka.errors.CommitFailedError as e:
+                if generator:
+                    generator.err_msg['phase'] = 'commit'
+                    generator.err_msg['message'] = "Commit failed: {}".format(str(e))
+                    generator._produce_error()
+
             release = message.value
             print ("{}: Consuming {}".format(
                 datetime.datetime.now(),
@@ -373,6 +384,11 @@ def get_parser():
         type=int,
         help="Time to sleep inbetween each scrape (in sec)."
     )
+    parser.add_argument(
+        'poll_interval',
+        type=int,
+        help="Kafka poll interval"
+    )
     return parser
 
 def main():
@@ -385,10 +401,11 @@ def main():
     bootstrap_servers = args.bootstrap_servers
     group = args.group
     sleep_time = args.sleep_time
+    poll_interval = args.poll_interval
 
     consumer = PyPIConsumer(
         in_topic, out_topic, err_topic,\
-        bootstrap_servers, group)
+        bootstrap_servers, group, poll_interval)
 
     while True:
         consumer.consume()
