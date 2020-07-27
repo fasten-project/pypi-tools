@@ -47,11 +47,6 @@ class CallGraphGenerator:
         self.untar_dir = Path("untar")
 
         self.error_msg = {
-            'product': self.product,
-            'version': self.version,
-            'version_timestamp': self.version_timestamp,
-            'requires_dist': self.requires_dist,
-            'datetime': str(datetime.datetime.now()),
             'phase': '',
             'message': ''
         }
@@ -94,7 +89,7 @@ class CallGraphGenerator:
         items = list(self.downloads_dir.iterdir())
         if len(items) != 1:
             self._format_error(err_phase,\
-                'Did not download only one item {}'.format(str(items)))
+                'Expecting a single downloaded item {}'.format(str(items)))
             raise CallGraphGeneratorError()
 
         return items[0]
@@ -151,8 +146,12 @@ class CallGraphGenerator:
 
         items = list(self.untar_dir.iterdir())
         if len(items) != 1:
+            # return the item with the same name as the product
+            for item in items:
+                if self.untar_dir/self.product == item:
+                    return item
             self._format_error(err_phase,\
-                'More than one items untarred {}'.format(str(items)))
+                'Expecting a single item to be untarred or matching product name: {}'.format(str(items)))
             raise CallGraphGeneratorError()
 
         return items[0]
@@ -193,6 +192,7 @@ class CallGraphGenerator:
             self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
 
+        print (out, err, self.out_file.as_posix())
         if not self.out_file.exists():
             self._format_error('generation', err.decode('utf-8'))
             raise CallGraphGeneratorError()
@@ -212,7 +212,10 @@ class CallGraphGenerator:
         res = 0
         for fname in files_list:
             with open(fname) as f:
-                res += sum(1 for l in f if l.rstrip())
+                try:
+                    res += sum(1 for l in f if l.rstrip())
+                except UnicodeDecodeError as e:
+                    continue
 
         return res
 
@@ -224,7 +227,12 @@ class CallGraphGenerator:
             raise CallGraphGeneratorError()
 
         with open(cg_path.as_posix(), "r") as f:
-            cg = json.load(f)
+            try:
+                cg = json.load(f)
+            except Exception:
+                self._format_error('producer',\
+                    'Call graph path does is not JSON formatted {}. Contents {}'.format(cg_path.as_posix(), f.read()))
+                raise CallGraphGeneratorError()
 
         # PyCG must produce a call graph with the key "depset"
         # The key "depset" must have the same format that comes from the input topic
@@ -318,6 +326,7 @@ class PyPIConsumer:
         )
 
         for message in self.consumer:
+            self.consumer.commit()
             release = message.value
             print ("{}: Consuming {}".format(
                 datetime.datetime.now(),
