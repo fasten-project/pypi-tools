@@ -335,8 +335,8 @@ class PyPIConsumer:
                 self.consumer.commit()
             except kafka.errors.CommitFailedError as e:
                 if generator:
-                    generator.err_msg['phase'] = 'commit'
-                    generator.err_msg['message'] = "Commit failed: {}".format(str(e))
+                    generator.error_msg['phase'] = 'commit'
+                    generator.error_msg['message'] = "Commit failed: {}".format(str(e))
                     generator._produce_error()
 
             release = message.value
