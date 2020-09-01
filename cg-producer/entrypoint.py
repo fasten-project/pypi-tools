@@ -37,15 +37,15 @@ class CallGraphGenerator:
         # number of files in the package
         self.num_files = None
 
-        self.out_root = Path("callgraphs")
+        self.out_root = Path("pycg-data")
         self.out_dir = self.out_root/self.product/self.version
         if not self.out_dir.exists():
             self.out_dir.mkdir(parents=True)
 
         self.out_file = self.out_dir/'cg.json'
 
-        self.downloads_dir = Path("downloads")
-        self.untar_dir = Path("untar")
+        self.downloads_dir = self.out_root/"downloads"
+        self.untar_dir = self.out_root/"untar"
 
         self.error_msg = {
             'phase': '',
@@ -193,7 +193,6 @@ class CallGraphGenerator:
             self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
 
-        print (out, err, self.out_file.as_posix())
         if not self.out_file.exists():
             self._format_error('generation', err.decode('utf-8'))
             raise CallGraphGeneratorError()
@@ -293,10 +292,12 @@ class CallGraphGenerator:
             shutil.rmtree(self.downloads_dir.as_posix())
         if self.untar_dir.exists():
             shutil.rmtree(self.untar_dir.as_posix())
+        if self.out_root.exists():
+            shutil.rmtree(self.out_root.as_posix())
 
     def _create_dir(self, path):
         if not path.exists():
-            path.mkdir()
+            path.mkdir(parents=True)
 
 class CallGraphGeneratorError(Exception):
     pass
