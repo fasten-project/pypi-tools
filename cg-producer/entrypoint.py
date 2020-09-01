@@ -148,8 +148,14 @@ class CallGraphGenerator:
         items = list(self.untar_dir.iterdir())
         if len(items) != 1:
             # return the item with the same name as the product
+            prod_replaced = ''
+            if self.product:
+                prod_replaced = self.product.replace('-', '_')
             for item in items:
                 if self.untar_dir/self.product == item:
+                    return item
+                # try with - replaced with _ (a common practice)
+                if self.untar_dir/prod_replaced == item:
                     return item
             self._format_error(err_phase,\
                 'Expecting a single item to be untarred or matching product name: {}'.format(str(items)))
@@ -329,16 +335,8 @@ class PyPIConsumer:
             value_serializer=lambda x: x.encode('utf-8')
         )
 
-        generator = None
         for message in self.consumer:
-            try:
-                self.consumer.commit()
-            except kafka.errors.CommitFailedError as e:
-                if generator:
-                    generator.error_msg['phase'] = 'commit'
-                    generator.error_msg['message'] = "Commit failed: {}".format(str(e))
-                    generator._produce_error()
-
+            self.consumer.commit()
             release = message.value
             print ("{}: Consuming {}".format(
                 datetime.datetime.now(),
