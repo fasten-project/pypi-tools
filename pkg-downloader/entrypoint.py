@@ -17,11 +17,12 @@ class PackageDownloader:
         self.err_topic = err_topic
         self.producer = producer
         self.release = release
-        self.source_dir = source_dir
+        self.source_dir = Path(source_dir)
 
         self.product = self.release['payload']['product']
         self.version = self.release['payload']['version']
 
+        self._create_dir(self.source_dir)
         self.out_root = Path("pycg-data")
         self.out_dir = self.out_root/self.product/self.version
         if not self.out_dir.exists():
@@ -56,29 +57,32 @@ class PackageDownloader:
     def _produce_error(self):
         # produce error to kafka topic
         output = dict(
-            plugin_name=self.plugin_name,
-            plugin_version=self.plugin_version,
             input=self.release,
-            created_at=self._get_now_ts(),
+            created_at=int(datetime.datetime.now().timestamp()),
             err=self.error_msg
         )
+        print (json.dumps(output))
         self.producer.send(self.err_topic, json.dumps(output))
 
     def _produce_source(self, source_path):
         release = self.release
-        release['payload']['sourcePath'] = source_path
+        release['payload']['sourcePath'] = source_path.as_posix()
         self.producer.send(self.out_topic, json.dumps(release))
+        print ("Produced!")
 
     def _copy_source(self, pkg):
-        source_path = os.path.join(self.source_dir,
-                "sources/{}/{}/{}".format(
+        source_path = self.source_dir/("sources/{}/{}/{}".format(
                     self.product[0], self.product, self.version))
-        self._create_dir(source_path)
         try:
-            distutils.dir_util.copy_tree(pkg, source_path)
-        except as e:
-            self.format_error('pkg-copy', str(e))
+            shutil.copytree(pkg, source_path)
+        except Exception as e:
+            self._format_error('pkg-copy', str(e))
             raise DownloadError()
+        return source_path
+
+    def _execute(self, opts):
+        cmd = sp.Popen(opts, stdout=sp.PIPE, stderr=sp.PIPE)
+        return cmd.communicate()
 
     def _create_dir(self, path):
         if not path.exists():
