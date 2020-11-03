@@ -5,11 +5,114 @@ import kafka
 import shutil
 import argparse
 import datetime
+import urllib.parse
 import subprocess as sp
 
 from pathlib import Path
+from distutils import dir_util
 
 from kafka import KafkaConsumer, KafkaProducer
+
+class CGConverter:
+    def __init__(self, cg):
+        self.cg = cg
+        self.new_cg = {
+            "product": cg["product"],
+            "forge": cg["forge"],
+            "nodes": None,
+            "generator": cg["generator"],
+            "depset": cg["depset"],
+            "version": cg["version"],
+            "modules": {
+                "internal": cg["modules"],
+                "external": {}
+            },
+            "graph": {
+                "internalCalls": [],
+                "externalCalls": [],
+                "resolvedCalls": []
+            },
+            "timestamp": cg["timestamp"],
+            "sourcePath": cg["sourcePath"]
+        }
+        self.key_to_ns = {}
+        self.key_to_super = {}
+        self.counter = -1
+
+    def encode(self, item):
+        return urllib.parse.quote(item, safe="/().")
+
+    def add_internal_calls(self):
+        for src, dst in self.cg["graph"]["internalCalls"]:
+            self.new_cg["graph"]["internalCalls"].append([str(src), str(dst), {}])
+
+    def extract_counter(self):
+        for mod in self.new_cg["modules"]["internal"].values():
+            for key, value in mod["namespaces"].items():
+                self.key_to_ns[int(key)] = self.encode(value["namespace"])
+                self.counter = max(self.counter, int(key))
+
+    def extract_superclasses(self):
+        for key, superclasses in self.cg["cha"].items():
+            scs = []
+            # convert superClasses items to strings
+            for item in superclasses:
+                try:
+                    mint = int(item)
+                    scs.append(self.key_to_ns[mint])
+                except ValueError:
+                    scs.append(self.encode(item))
+                    self.add_external(self.encode(item))
+            self.key_to_super[int(key)] = scs
+
+    def add_external(self, item):
+        modname = item.split("/")[2]
+        if not modname in self.new_cg["modules"]["external"]:
+            self.new_cg["modules"]["external"][modname] = {
+                "sourceFile": "",
+                "namespaces": {}
+            }
+
+        # find out if the uri already exists
+        found = False
+        for k, v in self.new_cg["modules"]["external"][modname]["namespaces"].items():
+            if v["namespace"] == item:
+                cnt = int(k)
+                found = True
+                break
+
+        if not found:
+            self.counter += 1
+            cnt = self.counter
+            self.new_cg["modules"]["external"][modname]["namespaces"][str(cnt)] = {
+                "namespace": item,
+                "metadata": {}
+            }
+
+        return cnt
+
+    def add_superclasses(self):
+        for mod in self.new_cg["modules"]["internal"].values():
+            for key, value in mod["namespaces"].items():
+                if int(key) in self.key_to_super:
+                    value["metadata"]["superClasses"] = self.key_to_super[int(key)]
+                value["namespace"] = self.encode(value["namespace"])
+
+    def add_external_calls(self):
+        for src, dst in self.cg["graph"]["externalCalls"]:
+            cnt = self.add_external(self.encode(dst))
+            self.new_cg["graph"]["externalCalls"].append([str(src), str(cnt), {}])
+
+    def convert(self):
+        self.add_internal_calls()
+        self.extract_counter()
+        self.extract_superclasses()
+        self.add_superclasses()
+        self.add_external_calls()
+        self.new_cg["nodes"] = self.counter + 1
+
+    def output(self):
+        return self.new_cg
 
 class PackageDownloader:
     def __init__(self, out_topic, err_topic, source_dir, producer, release):
@@ -32,6 +135,10 @@ class PackageDownloader:
 
         self.downloads_dir = self.out_root/"downloads"
         self.untar_dir = self.out_root/"untar"
+        self.source_path = self.source_dir/("sources/{}/{}/{}".format(
+                    self.product[0], self.product, self.version))
+        self.cg_path = self.source_dir/("callgraphs/{}/{}/{}".format(
+                    self.product[0], self.product, self.version))
 
         self.error_msg = {
             'phase': '',
@@ -42,9 +149,10 @@ class PackageDownloader:
         try:
             comp = self._download()
             package = self._decompress(comp)
-            source_path = self._copy_source(package)
-            self._produce_source(source_path)
+            self._copy_source(package)
+            self._produce_source(self.source_path.as_posix())
         except DownloadError:
+            self._produce_source(None)
             self._produce_error()
         finally:
             self._clean_dirs()
@@ -61,24 +169,38 @@ class PackageDownloader:
             created_at=int(datetime.datetime.now().timestamp()),
             err=self.error_msg
         )
-        print (json.dumps(output))
         self.producer.send(self.err_topic, json.dumps(output))
 
+    def _convert(self, cg):
+        cgconverter = CGConverter(cg)
+        cgconverter.convert()
+        return cgconverter.output()
+
+    def _store_cg(self):
+        if not self.cg_path.exists():
+            self.cg_path.mkdir(parents=True)
+
+        with open((self.cg_path/"cg.json").as_posix(), "w+") as f:
+            f.write(json.dumps(self.release['payload']))
+
     def _produce_source(self, source_path):
-        release = self.release
-        release['payload']['sourcePath'] = source_path.as_posix()
-        self.producer.send(self.out_topic, json.dumps(release))
-        print ("Produced!")
+        self.release['payload']['sourcePath'] = source_path
+        self.release['payload'] = self._convert(self.release['payload'])
+        self._store_cg()
+
+        self.producer.send(self.out_topic, json.dumps(self.release))
 
     def _copy_source(self, pkg):
-        source_path = self.source_dir/("sources/{}/{}/{}".format(
-                    self.product[0], self.product, self.version))
         try:
-            shutil.copytree(pkg, source_path)
+            if not self.source_path.exists():
+                self.source_path.mkdir(parents=True)
+            if os.path.isdir(pkg):
+                dir_util.copy_tree(pkg, self.source_path.as_posix())
+            else:
+                shutil.copyfile(pkg, self.source_path.as_posix())
         except Exception as e:
             self._format_error('pkg-copy', str(e))
             raise DownloadError()
-        return source_path
 
     def _execute(self, opts):
         cmd = sp.Popen(opts, stdout=sp.PIPE, stderr=sp.PIPE)
