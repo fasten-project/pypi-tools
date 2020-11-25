@@ -1,0 +1,3 @@
+[submodule "pypi-dcg/pycallgraph2"]
+	path = pypi-dcg/pycallgraph2
+	url = https://github.com/vitsalis/pycallgraph2
