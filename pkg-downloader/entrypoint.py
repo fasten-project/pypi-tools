@@ -197,7 +197,8 @@ class PackageDownloader:
             if os.path.isdir(pkg):
                 dir_util.copy_tree(pkg, self.source_path.as_posix())
             else:
-                shutil.copyfile(pkg, self.source_path.as_posix())
+                fname = os.path.basename(pkg)
+                shutil.copyfile(pkg, (self.source_path/fname).as_posix())
         except Exception as e:
             self._format_error('pkg-copy', str(e))
             raise DownloadError()
