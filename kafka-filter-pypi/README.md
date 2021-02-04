@@ -60,6 +60,7 @@ The output on the `filtered` kafka topic should be 904 JSON records of the form
     "version": <version>,
     "version_timestamp": <version_timestamp>,
     "requires_dist": <requires_dist>
+}
 ```
 
 Each combination of `product` and `version` should be unique.
