@@ -24,6 +24,7 @@
 import os
 import json
 import time
+import urllib
 import kafka
 import shutil
 import argparse
@@ -31,16 +32,124 @@ import datetime
 import subprocess as sp
 
 from pathlib import Path
+from distutils import dir_util
 
 from kafka import KafkaConsumer, KafkaProducer
 
+class CGConverter:
+    """
+    Converts FASTEN version 1 Call Graphs to Version 2
+    """
+    def __init__(self, cg):
+        self.cg = cg
+        self.new_cg = {
+            "product": cg["product"],
+            "forge": cg["forge"],
+            "nodes": None,
+            "generator": cg["generator"],
+            "depset": cg["depset"],
+            "version": cg["version"],
+            "modules": {
+                "internal": cg["modules"],
+                "external": {}
+            },
+            "graph": {
+                "internalCalls": [],
+                "externalCalls": [],
+                "resolvedCalls": []
+            },
+            "timestamp": cg["timestamp"],
+            "sourcePath": cg["sourcePath"],
+            "metadata": cg.get("metadata", {})
+        }
+        self.key_to_ns = {}
+        self.key_to_super = {}
+        self.counter = -1
+
+    def encode(self, item):
+        return urllib.parse.quote(item, safe="/().")
+
+    def add_internal_calls(self):
+        for src, dst in self.cg["graph"]["internalCalls"]:
+            self.new_cg["graph"]["internalCalls"].append([str(src), str(dst), {}])
+
+    def extract_counter(self):
+        for mod in self.new_cg["modules"]["internal"].values():
+            for key, value in mod["namespaces"].items():
+                self.key_to_ns[int(key)] = self.encode(value["namespace"])
+                self.counter = max(self.counter, int(key))
+
+    def extract_superclasses(self):
+        for key, superclasses in self.cg["cha"].items():
+            scs = []
+            # convert superClasses items to strings
+            for item in superclasses:
+                try:
+                    mint = int(item)
+                    scs.append(self.key_to_ns[mint])
+                except ValueError:
+                    scs.append(self.encode(item))
+                    self.add_external(self.encode(item))
+            self.key_to_super[int(key)] = scs
+
+    def add_external(self, item):
+        modname = item.split("/")[2]
+        if not modname in self.new_cg["modules"]["external"]:
+            self.new_cg["modules"]["external"][modname] = {
+                "sourceFile": "",
+                "namespaces": {}
+            }
+
+        # find out if the uri already exists
+        found = False
+        for k, v in self.new_cg["modules"]["external"][modname]["namespaces"].items():
+            if v["namespace"] == item:
+                cnt = int(k)
+                found = True
+                break
+
+        if not found:
+            self.counter += 1
+            cnt = self.counter
+            self.new_cg["modules"]["external"][modname]["namespaces"][str(cnt)] = {
+                "namespace": item,
+                "metadata": {}
+            }
+
+        return cnt
+
+    def add_superclasses(self):
+        for mod in self.new_cg["modules"]["internal"].values():
+            for key, value in mod["namespaces"].items():
+                if int(key) in self.key_to_super:
+                    value["metadata"]["superClasses"] = self.key_to_super[int(key)]
+                value["namespace"] = self.encode(value["namespace"])
+
+    def add_external_calls(self):
+        for src, dst in self.cg["graph"]["externalCalls"]:
+            cnt = self.add_external(self.encode(dst))
+            self.new_cg["graph"]["externalCalls"].append([str(src), str(cnt), {}])
+
+    def convert(self):
+        self.add_internal_calls()
+        self.extract_counter()
+        self.extract_superclasses()
+        self.add_superclasses()
+        self.add_external_calls()
+        self.new_cg["nodes"] = self.counter + 1
+
+    def output(self):
+        return self.new_cg
+
+
 
 class CallGraphGenerator:
-    def __init__(self, out_topic, err_topic, producer, release):
+    def __init__(self, out_topic, err_topic, source_dir, producer, release):
         self.out_topic = out_topic
         self.err_topic = err_topic
         self.producer = producer
         self.release = release
+        self.source_dir = Path(source_dir)
 
         self.release_msg = release
         self.product = release['product']
@@ -60,16 +169,24 @@ class CallGraphGenerator:
         # number of files in the package
         self.num_files = None
 
+        # Root directory for tmp data
         self.out_root = Path("pycg-data")
         self.out_dir = self.out_root/self.product/self.version
-        if not self.out_dir.exists():
-            self.out_dir.mkdir(parents=True)
-
         self.out_file = self.out_dir/'cg.json'
-
         self.downloads_dir = self.out_root/"downloads"
         self.untar_dir = self.out_root/"untar"
 
+        # Where the source code will be stored
+        self.source_path = self.source_dir/("sources/{}/{}/{}".format(
+                    self.product[0], self.product, self.version))
+        # Where the call graphs will be stored
+        self.cg_path = self.source_dir/("callgraphs/{}/{}/{}".format(
+                    self.product[0], self.product, self.version))
+
+        self._create_dir(self.source_dir)
+        self._create_dir(self.out_dir)
+
+        # template for error messages
         self.error_msg = {
             'phase': '',
             'message': ''
@@ -79,6 +196,7 @@ class CallGraphGenerator:
         try:
             comp = self._download()
             package = self._decompress(comp)
+            self._copy_source(package)
             cg_path = self._generate_callgraph(package)
             self._produce_callgraph(cg_path)
             self._unlink_callgraph(cg_path)
@@ -125,7 +243,6 @@ class CallGraphGenerator:
         self._create_dir(self.untar_dir)
         file_ext = comp_path.suffix
 
-        # TODO: More filetypes may exist
         if file_ext == '.gz':
             cmd = [
                 'tar',
@@ -185,6 +302,19 @@ class CallGraphGenerator:
             raise CallGraphGeneratorError()
 
         return items[0]
+
+    def _copy_source(self, pkg):
+        try:
+            if not self.source_path.exists():
+                self.source_path.mkdir(parents=True)
+            if os.path.isdir(pkg):
+                dir_util.copy_tree(pkg, self.source_path.as_posix())
+            else:
+                fname = os.path.basename(pkg)
+                shutil.copyfile(pkg, (self.source_path/fname).as_posix())
+        except Exception as e:
+            self._format_error('pkg-copy', str(e))
+            raise CallGraphGeneratorError()
 
     def _generate_callgraph(self, package_path):
         # call pycg using `package`
@@ -248,6 +378,11 @@ class CallGraphGenerator:
 
         return res
 
+    def _convert_cg(self, cg):
+        cgconverter = CGConverter(cg)
+        cgconverter.convert()
+        return cgconverter.output()
+
     def _produce_callgraph(self, cg_path):
         # produce call graph to kafka topic
         if not cg_path.exists():
@@ -277,9 +412,16 @@ class CallGraphGenerator:
         cg["metadata"]["time_elapsed"] = self.elapsed or -1
         cg["metadata"]["max_rss"] = self.max_rss or -1
         cg["metadata"]["num_files"] = self.num_files or -1
+        cg["sourcePath"] = self.source_path.as_posix()
+
+        # convert call graph to new format
+        out_cg = self._convert_cg(cg)
+
+        # store it
+        self._store_cg(out_cg)
 
         output = dict(
-                payload=cg,
+                payload=out_cg,
                 plugin_name=self.plugin_name,
                 plugin_version=self.plugin_version,
                 input=self.release,
@@ -287,6 +429,13 @@ class CallGraphGenerator:
         )
 
         self.producer.send(self.out_topic, json.dumps(output))
+
+    def _store_cg(self, out_cg):
+        if not self.cg_path.exists():
+            self.cg_path.mkdir(parents=True)
+
+        with open((self.cg_path/"cg.json").as_posix(), "w+") as f:
+            f.write(json.dumps(out_cg))
 
     def _unlink_callgraph(self, cg_path):
         if not cg_path.exists():
@@ -333,10 +482,11 @@ class CallGraphGeneratorError(Exception):
 
 class PyPIConsumer:
     def __init__(self, in_topic, out_topic, err_topic,\
-                    bootstrap_servers, group, poll_interval):
+                    source_dir, bootstrap_servers, group, poll_interval):
         self.in_topic = in_topic
         self.out_topic = out_topic
         self.err_topic = err_topic
+        self.source_dir = source_dir
         self.bootstrap_servers = bootstrap_servers.split(",")
         self.group = group
         self.poll_interval = poll_interval
@@ -366,7 +516,8 @@ class PyPIConsumer:
                 release
             ))
 
-            generator = CallGraphGenerator(self.out_topic, self.err_topic, self.producer, release)
+            generator = CallGraphGenerator(self.out_topic, self.err_topic,
+                    self.source_dir, self.producer, release)
             generator.generate()
 
 def get_parser():
@@ -407,6 +558,11 @@ def get_parser():
         help="Time to sleep inbetween each scrape (in sec)."
     )
     parser.add_argument(
+        'source_dir',
+        type=str,
+        help="Directory where source code and call graphs will be stored."
+    )
+    parser.add_argument(
         'poll_interval',
         type=int,
         help="Kafka poll interval"
@@ -423,11 +579,12 @@ def main():
     bootstrap_servers = args.bootstrap_servers
     group = args.group
     sleep_time = args.sleep_time
+    source_dir = args.source_dir
     poll_interval = args.poll_interval
 
     consumer = PyPIConsumer(
         in_topic, out_topic, err_topic,\
-        bootstrap_servers, group, poll_interval)
+        source_dir, bootstrap_servers, group, poll_interval)
 
     while True:
         consumer.consume()
