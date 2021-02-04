@@ -53,7 +53,7 @@ docker run -it pypi-filter input_coords filtered localhost:9092 \
     mygroup 1 --check-old
 ```
 
-The output on the `filtered` kafka topic should be JSON records of the form
+The output on the `filtered` kafka topic should be 904 JSON records of the form
 ```json
 {
     "product": <release>,
