@@ -308,7 +308,13 @@ class CallGraphGenerator:
             if not self.source_path.exists():
                 self.source_path.mkdir(parents=True)
             if os.path.isdir(pkg):
-                dir_util.copy_tree(pkg, self.source_path.as_posix())
+                pkg_path = pkg.as_posix()
+                # if the package path contains an init file
+                # then the PyCG will generate a call graph for its parent
+                if (pkg/"__init__.py").exists():
+                    pkg_path = pkg.parent.as_posix()
+
+                dir_util.copy_tree(pkg_path, self.source_path.as_posix())
             else:
                 fname = os.path.basename(pkg)
                 shutil.copyfile(pkg, (self.source_path/fname).as_posix())
