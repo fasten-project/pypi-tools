@@ -1,6 +1,7 @@
 import os
 import ast
 import glob
+import json
 import time
 import kafka
 import shutil
@@ -14,7 +15,7 @@ from distutils import dir_util
 from kafka import KafkaConsumer, KafkaProducer
 
 ROUND = 3
-COVERAGE_PER = 100
+COVERAGE_PER = 1
 METHOD_PYTEST = "METHOD_PYTEST"
 METHOD_UNITTEST = "METHOD_UNITTEST"
 LOCAL_MOUNT = "/local"
@@ -46,9 +47,10 @@ class StatsCollector:
     def _get_path(self):
         product = self.release['product']
         version = self.release['version']
-        pkg_dir = os.path.join(self.release['product'], self.release['version'])
-        mounted = os.path.join(self.source_dir, pkg_dir)
+        pkg_dir = os.path.join(self.release['product'][0], self.release['product'], self.release['version'])
+        mounted = os.path.join(self.source_dir, "sources", pkg_dir)
         if not os.path.exists(mounted):
+            print ("Source directory does not exist: ", mounted)
             return None
 
         if self.copy_sources:
@@ -65,58 +67,80 @@ class StatsCollector:
 
     def _analyze_pytest_lines(self, lines):
         data = {}
+        failed = False
+        failed_count = 0
         for line in lines:
             if not line.strip():
-                break
+                failed = True
+                continue
 
-            fpath, cls, tst_name = line.strip().split(b'::')
+            if failed:
+                if line.startswith(b'ERROR'):
+                    failed_count += 1
+            else:
+                splitted = line.strip().split(b'::')
+                if len(splitted) == 3:
+                    fpath, _, tst_name = splitted
+                elif len(splitted) == 2:
+                    fpath, tst_name = splitted
+                else:
+                    continue
 
-            if not data.get(fpath, None):
-                data[fpath] = {}
+                if not data.get(fpath, None):
+                    data[fpath] = []
 
-            if not data[fpath].get(cls, None):
-                data[fpath][cls] = []
+                data[fpath].append(tst_name)
 
-            data[fpath][cls].append(tst_name)
+        test_files_count = 0
+        tests_count = 0
+        for tests in data.values():
+            test_files_count += 1
+            tests_count += len(tests)
 
-        return data
+        return test_files_count, tests_count, failed_count
 
     def collect_pytest_stats(self):
         env = self._get_environment()
 
         cmd = ["pytest", "--collect-only", "--quiet", self.path]
-        pp = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env)
-        files_and_tests = self._analyze_pytest_lines(pp.stdout.readlines())
-
-        test_files_count = 0
-        tests_count = 0
-        for classes in files_and_tests.values():
-            test_files_count += 1
-            for tests in classes.values():
-                tests_count += len(tests)
-
-        return test_files_count, tests_count
+        pp = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        return self._analyze_pytest_lines(pp.stdout.readlines())
 
     def collect_unittest_stats(self):
         def count_tests(tests):
             test_files_count = 0
             tests_count = 0
+            tests_failed = 0
             for test in tests:
-                test_files_count += 1
-                tests_count += test.countTestCases()
+                cnt = 0
+                for t in test:
+                    if isinstance(t, unittest.loader._FailedTest):
+                        tests_failed += 1
+                        continue
+                    cnt += 1
+                if cnt > 0:
+                    test_files_count += 1
 
-            return test_files_count, tests_count
+                tests_count += cnt
 
-        tests = unittest.defaultTestLoader.discover(self.path, pattern="*_test.py")
-        fcount, tcount = count_tests(tests)
+            return test_files_count, tests_count, tests_failed
+
+        def discover(pattern):
+            try:
+                return unittest.TestLoader().discover(self.path, pattern=pattern, top_level_dir=self.path)
+            except Exception as e:
+                return []
+
+        tests = discover("*_test.py")
+        fcount, tcount, failedcount = count_tests(tests)
         if fcount == 0:
-            tests = unittest.defaultTestLoader.discover(self.path, pattern="test*")
-            fcount, tcount = count_tests(tests)
+            tests = discover("test*")
+            fcount, tcount, failedcount = count_tests(tests)
 
-        return fcount, tcount
+        return fcount, tcount, failedcount
 
     def collect_source_files(self):
-        return glob.glob(self.path + "/**/*.py")
+        return glob.glob(self.path + "/**/*.py", recursive=True)
 
     def collect_functions(self, source_files):
         func_count = 0
@@ -133,7 +157,7 @@ class StatsCollector:
         env = self._get_environment()
 
         cmd = ["pytest", "--collect-only", "--quiet", "--cov="+self.path, self.path]
-        pp = subprocess.Popen(cmd, stdout=subprocess.PIPE, env=env)
+        pp = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         cov_found = False
         for line in pp.stdout.readlines():
             decoded = line.decode('ascii').strip()
@@ -148,6 +172,15 @@ class StatsCollector:
         return "-"
 
     def collect(self):
+        def get_ratios(tc, tfc, fc, sfc):
+            unit_func_ratio = "-"
+            if fc != 0:
+                unit_func_ratio = round(tc/fc, ROUND)
+            test_source_ratio = "-"
+            if sfc != 0:
+                test_source_ratio = round(tfc/sfc, ROUND)
+            return unit_func_ratio, test_source_ratio
+
         if not self.path:
             return
 
@@ -157,33 +190,40 @@ class StatsCollector:
         source_files_count = len(source_files)
         functions_count = self.collect_functions(source_files)
 
-        if self.method == METHOD_PYTEST:
-            test_files_count, tests_count = self.collect_pytest_stats()
-        else:
-            test_files_count, tests_count = self.collect_unittest_stats()
+        test_files_count_pytest, tests_count_pytest, tests_failed_pytest = self.collect_pytest_stats()
+        test_files_count_unittest, tests_count_unittest, tests_failed_unittest = self.collect_unittest_stats()
 
-        unit_func_ratio = round(tests_count/source_files_count, ROUND)
-
-        has_tests = False
-        test_source_ratio = "-"
-        if test_files_count != 0:
-            has_tests = True
-            test_source_ratio = round(source_files_count/test_files_count, ROUND)
+        unit_func_ratio_pytest, test_source_ratio_pytest = get_ratios(tests_count_pytest,
+                    test_files_count_pytest, functions_count, source_files_count)
+        unit_func_ratio_unittest, test_source_ratio_unittest = get_ratios(tests_count_unittest,
+                    test_files_count_unittest, functions_count, source_files_count)
 
         coverage = "-"
-        if has_tests and random.random() < 1/COVERAGE_PER:
+        if test_files_count_pytest > 0 and random.random() < 1/COVERAGE_PER:
             coverage = self.collect_coverage()
 
         end = time.time()
 
         self.produce({
+            "product": self.release["product"],
+            "version": self.release["version"],
             "path": self.path,
             "sourceFiles": source_files_count,
             "functions": functions_count,
-            "unitTests": tests_count,
-            "testFiles": test_files_count,
-            "unitTestsToFunctionsRatio": unit_func_ratio,
-            "testToSourceRatio": test_source_ratio,
+            "pytest": {
+                "unitTests": tests_count_pytest,
+                "testFiles": test_files_count_pytest,
+                "unitTestsToFunctionsRatio": unit_func_ratio_pytest,
+                "testToSourceRatio": test_source_ratio_pytest,
+                "failed": tests_failed_pytest
+            },
+            "unittest": {
+                "unitTests": tests_count_unittest,
+                "testFiles": test_files_count_unittest,
+                "unitTestsToFunctionsRatio": unit_func_ratio_unittest,
+                "testToSourceRatio": test_source_ratio_unittest,
+                "failed": tests_failed_unittest
+            },
             "coverage": coverage,
             "time": round(end-start, ROUND)
         })
@@ -227,12 +267,12 @@ class Consumer:
         for message in self.consumer:
             self.consumer.commit()
             release = message.value
-            print ("{}: Consuming {}".format(
+            print ("{}: Consuming {}-{}".format(
                 datetime.datetime.now(),
-                release
+                release['product'], release['version']
             ))
 
-            collector = StatsCollector(self.out_topic, self.source_dir, self.producer, self.release, self.copy_sources, METHOD_PYTEST)
+            collector = StatsCollector(self.out_topic, self.source_dir, self.producer, release, self.copy_sources, METHOD_PYTEST)
             collector.collect()
 
 def get_parser():
@@ -278,8 +318,8 @@ def get_parser():
         help="Kafka poll interval"
     )
     parser.add_argument(
-        'copy_sources',
-        type=bool,
+        '--copy-sources',
+        action="store_true",
         help="Copy source directories into local directories",
         default=False)
     return parser
