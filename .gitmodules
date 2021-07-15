@@ -1,5 +1,5 @@
-[submodule "pypi-dcg/pycallgraph2"]
-	path = pypi-dcg/pycallgraph2
+[submodule "pydyncg/pycallgraph2"]
+	path = pydyncg/pycallgraph2
 	url = https://github.com/vitsalis/pycallgraph2
 [submodule "cg-producer/PyCG"]
 	path = cg-producer/PyCG
