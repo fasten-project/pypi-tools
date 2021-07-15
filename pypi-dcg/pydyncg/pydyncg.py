@@ -2,8 +2,11 @@ import os
 import sys
 import json
 import time
+import pkgutil
 import argparse
 import subprocess as sp
+
+from stdlib_list import stdlib_list
 
 
 class CGGenerator:
@@ -39,15 +42,29 @@ class GeneratorError(Exception):
     pass
 
 class FASTENFormatter:
-    def __init__(self, cg, package_path, product, forge, version):
+    def __init__(self, cg, package_path, product, forge, version, ignore_builtins):
         self.cg = cg
         self.product = product
         self.forge = forge
         self.version = version
         self.package_path = package_path
+        self.ignore_builtins = ignore_builtins
         self.cnt_names = 0
         self.internal_name_to_id = {}
         self.resolved_name_to_id = {}
+        self._ignore_list = set([
+            'Cython', 'setuptools', 'distutils', 'lib2to3', 'unittest',
+            'difflib', 'ctypes', 'configparser', 'cython', 'getopt',
+            '_distutils_hack', 'pkg_resources', 'mock'] + stdlib_list("3.9"))
+        self._ignore_files = self.get_builtin_files()
+
+    def get_builtin_files(self):
+        res = []
+        builtin_modules = sys.builtin_module_names
+        for item in pkgutil.iter_modules():
+            if item.name in builtin_modules:
+                res.append(os.path.join(item.module_finder.path, item.name + ".py"))
+        return res
 
     def to_mod_name(self, path):
         if path.endswith(".py"):
@@ -153,6 +170,12 @@ class FASTENFormatter:
                 modname = modname[len(self.to_mod_name(path))+1:]
 
         if modname.startswith("."):
+            return None
+
+        if modname.split(".")[0] in self._ignore_list and self.ignore_builtins:
+            return None
+
+        if item["file"] in self._ignore_files and self.ignore_builtins:
             return None
 
         res = "//" + modname.split(".")[0] + "/" + modname + "/"
@@ -322,6 +345,11 @@ def get_parser():
         type=str,
         help="Version of the package"
     )
+    parser.add_argument(
+        "--ignore-builtins",
+        action="store_true",
+        help="Ignore builtin Python libraries"
+    )
 
     parser.add_argument(
         "command",
@@ -346,11 +374,12 @@ def main():
     version = args.version
     command = args.command
     command_args = args.command_args
+    ignore_builtins = args.ignore_builtins
 
     generator = CGGenerator(source_dir, command, command_args)
     cg = generator.generate()
 
-    formatter = FASTENFormatter(cg, source_dir, product, forge, version)
+    formatter = FASTENFormatter(cg, source_dir, product, forge, version, ignore_builtins)
     print (json.dumps(formatter.generate()))
 
 if __name__ == "__main__":

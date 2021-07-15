@@ -7,6 +7,7 @@ directory,
 ```
 >>> git submodule init && git submodule update
 >>> cd pycallgraph2 && python3 setup.py install && cd .. # install pycallgraph2
+>>> pip3 install stdlib_list # install stdlib_list
 >>> python3 setup.py install # install pydyncg
 ```
 
@@ -14,7 +15,7 @@ directory,
 
 ```
 >>> pydyncg -h
-usage: FASTEN dynamic call graph generator using pycallgraph2 [-h] [--product PRODUCT] [--forge FORGE] [--version VERSION] source_dir command [command_args ...]
+usage: FASTEN dynamic call graph generator using pycallgraph2 [-h] [--product PRODUCT] [--forge FORGE] [--version VERSION] [--ignore-builtins] source_dir command [command_args ...]
 
 positional arguments:
   source_dir         Package to analyze
@@ -26,6 +27,7 @@ optional arguments:
   --product PRODUCT  Package name
   --forge FORGE      Source the package was downloaded from
   --version VERSION  Version of the package
+  --ignore-builtins  Ignore builtin Python libraries
 ```
 
 It is recommended to provide command to execute and arguments like this:
