@@ -52,6 +52,7 @@ class FASTENFormatter:
         self.cnt_names = 0
         self.internal_name_to_id = {}
         self.resolved_name_to_id = {}
+        self._ignore_funcs = ["_find_and_load"]
         self._ignore_list = set([
             'Cython', 'setuptools', 'distutils', 'lib2to3', 'unittest',
             'difflib', 'ctypes', 'configparser', 'cython', 'getopt',
@@ -158,9 +159,14 @@ class FASTENFormatter:
         if mname.startswith(self.to_mod_name(self.package_path)):
             mname = mname[len(self.to_mod_name(self.package_path))+1:]
 
+        if inpath and inpath in self._ignore_funcs:
+            return None
+
         res = "/" + mname + "/"
         if inpath:
             res += inpath
+            if item["is_func"]:
+                res += "()"
         return res
 
     def to_external(self, item, inpath=None):
@@ -178,9 +184,15 @@ class FASTENFormatter:
         if item["file"] in self._ignore_files and self.ignore_builtins:
             return None
 
+        if inpath and inpath in self._ignore_funcs:
+            return None
+
         res = "//" + modname.split(".")[0] + "/" + modname + "/"
         if inpath:
             res += inpath
+            if item["is_func"]:
+                res += "()"
+
         return res
 
     def get_nskey(self):
@@ -217,6 +229,8 @@ class FASTENFormatter:
                 if item["file"].startswith(self.package_path):
                     # internal module
                     modname = self.to_internal(item)
+                    if not modname:
+                        continue
                     nskey = self.get_nskey()
                     internal[modname] = construct(item, modname, nskey)
                     self.internal_name_to_id[item["name"]] = nskey
@@ -259,12 +273,14 @@ class FASTENFormatter:
                 cntdct[item["mod"]] = nskey
 
             inpath = item["name"][len(item["mod"])+1:]
-            nskey = self.get_nskey()
-            dct[modname]["namespaces"][nskey] = {
-                "namespace": fn(item, inpath),
-                "metadata": self.get_metadata(item),
-            }
-            cntdct[item["name"]] = nskey
+            fname = fn(item, inpath)
+            if fname:
+                nskey = self.get_nskey()
+                dct[modname]["namespaces"][nskey] = {
+                    "namespace": fn(item, inpath),
+                    "metadata": self.get_metadata(item),
+                }
+                cntdct[item["name"]] = nskey
 
         return internal, external
 
