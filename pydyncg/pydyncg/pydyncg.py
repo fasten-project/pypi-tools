@@ -25,7 +25,12 @@ class CGGenerator:
         except Exception as e:
             raise GeneratorError(str(e))
 
-        with open(os.path.join(self.source_dir, "pycallgraph.json")) as f:
+        pycallgraph_path = os.path.join(self.source_dir, "pycallgraph.json")
+        if not os.path.exists(pycallgraph_path):
+            print ("Execution encountered an error.")
+            print (err)
+            sys.exit(1)
+        with open(pycallgraph_path) as f:
             contents = json.load(f)
 
         return contents
@@ -52,11 +57,11 @@ class FASTENFormatter:
         self.cnt_names = 0
         self.internal_name_to_id = {}
         self.resolved_name_to_id = {}
-        self._ignore_funcs = ["_find_and_load"]
+        self._ignore_funcs = ["_find_and_load", "_lock_unlock_module", "_handle_fromlist"]
         self._ignore_list = set([
-            'Cython', 'setuptools', 'distutils', 'lib2to3', 'unittest',
-            'difflib', 'ctypes', 'configparser', 'cython', 'getopt',
-            '_distutils_hack', 'pkg_resources', 'mock'] + stdlib_list("3.9"))
+            'Cython', 'setuptools', 'distutils', 'lib2to3', 'unittest', "site-packages",
+            'difflib', 'ctypes', 'configparser', 'cython', 'getopt', "_sysconfigdata__linux_x86_64-linux-gnu",
+            '_distutils_hack', 'pkg_resources', 'mock', 'importlib'] + stdlib_list("3.9"))
         self._ignore_files = self.get_builtin_files()
 
     def get_builtin_files(self):
@@ -165,7 +170,7 @@ class FASTENFormatter:
         res = "/" + mname + "/"
         if inpath:
             res += inpath
-            if item["is_func"]:
+            if item["is_func"] and not inpath.endswith("comp>"):
                 res += "()"
         return res
 
@@ -190,7 +195,7 @@ class FASTENFormatter:
         res = "//" + modname.split(".")[0] + "/" + modname + "/"
         if inpath:
             res += inpath
-            if item["is_func"]:
+            if item["is_func"] and not inpath.endswith("comp>"):
                 res += "()"
 
         return res
@@ -308,6 +313,9 @@ class FASTENFormatter:
                 dst_id = self.internal_name_to_id[dst]
             else:
                 found = False
+
+            if found and src_id == dst_id:
+                continue
 
             if found and resolved:
                 resolvedCalls.append([src_id, dst_id, {}])
