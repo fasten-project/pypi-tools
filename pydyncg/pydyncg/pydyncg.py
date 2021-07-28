@@ -7,6 +7,7 @@ import argparse
 import subprocess as sp
 
 from stdlib_list import stdlib_list
+from pkg_resources import Requirement
 
 
 class CGGenerator:
@@ -28,6 +29,7 @@ class CGGenerator:
         pycallgraph_path = os.path.join(self.source_dir, "pycallgraph.json")
         if not os.path.exists(pycallgraph_path):
             print ("Execution encountered an error.")
+            print (out)
             print (err)
             sys.exit(1)
         with open(pycallgraph_path) as f:
@@ -57,11 +59,13 @@ class FASTENFormatter:
         self.cnt_names = 0
         self.internal_name_to_id = {}
         self.resolved_name_to_id = {}
-        self._ignore_funcs = ["_find_and_load", "_lock_unlock_module", "_handle_fromlist"]
+        self._ignore_list = []
+        self._ignore_funcs = ["_lock_unlock_module", "_handle_fromlist"]
         self._ignore_list = set([
             'Cython', 'setuptools', 'distutils', 'lib2to3', 'unittest', "site-packages",
-            'difflib', 'ctypes', 'configparser', 'cython', 'getopt', "_sysconfigdata__linux_x86_64-linux-gnu",
-            '_distutils_hack', 'pkg_resources', 'mock', 'importlib'] + stdlib_list("3.9"))
+            'difflib', 'ctypes', 'configparser', 'cython', 'getopt',
+            '_distutils_hack', 'pkg_resources', 'mock'] + stdlib_list("3.9"))
+        self._ignore_list.remove("importlib")
         self._ignore_files = self.get_builtin_files()
 
     def get_builtin_files(self):
@@ -94,7 +98,10 @@ class FASTENFormatter:
             if not line:
                 continue
 
-            req = Requirement.parse(line)
+            try:
+                req = Requirement.parse(line)
+            except Exception:
+                continue
 
             product = req.unsafe_name
             specs = req.specs
