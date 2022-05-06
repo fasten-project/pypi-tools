@@ -41,6 +41,7 @@ class PyPIFilter:
         self.group = group
         self.check_old = check_old
         self.postgresql_db = self._connect(host_address, database_name, database_user)
+        self.cursor = self.postgresql_db.cursor()
 
         self.packages = {}
         if self.check_old:
@@ -54,9 +55,21 @@ class PyPIFilter:
             user=database_user)
             return conn
         except psycopg2.Error as e:
-            print("Unable to estsblish connection to the PostgreSQL Database")
+            print("Unable to establish connection to the PostgreSQL Database")
             sys.exit(0)
     
+    def _assert_package_existence(self, product, version):
+        query = ''' SELECT *
+                FROM PACKAGES
+                INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id = PACKAGE_VERSIONS.id
+                WHERE PACKAGES.package_name = %s AND PACKAGE_VERSIONS.version = %s'''
+
+        self.cursor.execute(query,(product,version))
+        rows = self.cursor.fetchall()
+        if not rows:
+            return False
+        return True
+
     def consume(self):
         self._init_kafka()
 
@@ -78,6 +91,8 @@ class PyPIFilter:
         self.producer.send(self.out_topic, json.dumps(entry))
 
     def _exists(self, entry):
+        if self._assert_package_existence(entry["product"], entry["version"]):
+            return True
         if not entry["product"] in self.packages:
             return False
         if not entry["version"] in self.packages[entry["product"]]:
