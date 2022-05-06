@@ -58,13 +58,13 @@ class PyPIFilter:
             print("Unable to establish connection to the PostgreSQL Database")
             sys.exit(0)
     
-    def _assert_package_existence(self, product, version):
+    def _exists_in_database(self, entry):
         query = ''' SELECT *
                 FROM PACKAGES
                 INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id = PACKAGE_VERSIONS.id
                 WHERE PACKAGES.package_name = %s AND PACKAGE_VERSIONS.version = %s'''
 
-        self.cursor.execute(query,(product,version))
+        self.cursor.execute(query,(entry["product"],entry["version"]))
         rows = self.cursor.fetchall()
         if not rows:
             return False
@@ -81,18 +81,17 @@ class PyPIFilter:
             ))
 
             for entry in self._extract(package):
-                if not self._exists(entry):
+                if not self._exists_in_dictionary(entry):
                     self._store(entry)
-                    self.produce(entry)
+                    if not self._exists_in_database(entry):
+                        self.produce(entry)
                 else:
                     print ("{} already exists".format(entry))
 
     def produce(self, entry):
         self.producer.send(self.out_topic, json.dumps(entry))
 
-    def _exists(self, entry):
-        if self._assert_package_existence(entry["product"], entry["version"]):
-            return True
+    def _exists_in_dictionary(self, entry):
         if not entry["product"] in self.packages:
             return False
         if not entry["version"] in self.packages[entry["product"]]:
@@ -132,7 +131,7 @@ class PyPIFilter:
         )
         for message in consumer:
             pkg = message.value
-            if not self._exists(pkg):
+            if not self._exists_in_dictionary(pkg):
                 self._store(pkg)
 
     def _extract(self, package):
