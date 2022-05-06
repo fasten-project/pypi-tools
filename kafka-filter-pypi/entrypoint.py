@@ -79,7 +79,6 @@ class PyPIFilter:
                 datetime.datetime.now(),
                 package["title"]
             ))
-
             for entry in self._extract(package):
                 if not self._exists_in_dictionary(entry):
                     self._store(entry)
@@ -136,24 +135,33 @@ class PyPIFilter:
 
     def _extract(self, package):
         try:
+            is_ingested = True if package["ingested"] else False
             pkg_name = package["project"]["info"]["name"]
             requires_dist = package["project"]["info"]["requires_dist"]
             releases = package["project"]["releases"]
         except KeyError:
             print ("Could not retrieve packaging info from {}".format(json.dumps(package)))
             return
-
+        if not requires_dist:
+            requires_dist = []
         requires_dist = self._parse_requires(requires_dist)
         for release in releases:
-            if not release.get("version", None) or\
-                    not release.get("releases", None):
-                continue
-
-            version = release["version"]
+            if is_ingested:
+                if not releases.get(version, None):
+                    continue
+                version = release
+                release_list = releases[version]
+            else:
+                if not release.get("version", None) or\
+                        not release.get("releases", None):
+                    continue
+                version = release["version"]
+                release_list = release["releases"]
+            
             ts = float("inf")
 
             # get smallest value for timestamp
-            for r in release["releases"]:
+            for r in release_list:
                 if not r.get("upload_time", None):
                     continue
 
