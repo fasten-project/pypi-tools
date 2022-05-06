@@ -135,7 +135,7 @@ class PyPIFilter:
 
     def _extract(self, package):
         try:
-            is_ingested = True if package["ingested"] else False
+            is_ingested = True if "ingested" in package else False
             pkg_name = package["project"]["info"]["name"]
             requires_dist = package["project"]["info"]["requires_dist"]
             releases = package["project"]["releases"]
@@ -147,9 +147,9 @@ class PyPIFilter:
         requires_dist = self._parse_requires(requires_dist)
         for release in releases:
             if is_ingested:
+                version = release
                 if not releases.get(version, None):
                     continue
-                version = release
                 release_list = releases[version]
             else:
                 if not release.get("version", None) or\
