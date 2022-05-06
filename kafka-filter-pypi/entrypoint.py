@@ -26,23 +26,37 @@ import json
 import argparse
 import datetime
 import dateutil.parser
+import psycopg2
+import sys
 
 from pkg_resources import Requirement
 
 from kafka import KafkaConsumer, KafkaProducer
 
 class PyPIFilter:
-    def __init__(self, in_topic, out_topic, bootstrap_servers, group, check_old):
+    def __init__(self, in_topic, out_topic, bootstrap_servers, group, check_old, host_address, database_name, database_user):
         self.in_topic = in_topic
         self.out_topic = out_topic
         self.bootstrap_servers = bootstrap_servers.split(",")
         self.group = group
         self.check_old = check_old
+        self.postgresql_db = self._connect(host_address, database_name, database_user)
 
         self.packages = {}
         if self.check_old:
             self._fill_old()
 
+    def _connect(self,  host_address, database_name, database_user):
+        try:
+            conn = psycopg2.connect(
+            host=host_address,
+            dbname=database_name,
+            user=database_user)
+            return conn
+        except psycopg2.Error as e:
+            print("Unable to estsblish connection to the PostgreSQL Database")
+            sys.exit(0)
+    
     def consume(self):
         self._init_kafka()
 
@@ -242,6 +256,21 @@ def get_parser():
         help="Kafka consumer group to which the consumer belongs."
     )
     parser.add_argument(
+        'host_address',
+        type=str,
+        help="Host address of the PostgreSQL Database"
+    )
+    parser.add_argument(
+        'database_name',
+        type=str,
+        help="Name of the PostgreSQL database to connect"
+    )
+    parser.add_argument(
+        'database_user',
+        type=str,
+        help="Name of the name used to authenticate the database connection"
+    )
+    parser.add_argument(
         'sleep_time',
         type=int,
         help="Time to sleep inbetween each scrape (in sec)."
@@ -264,10 +293,13 @@ def main():
     group = args.group
     sleep_time = args.sleep_time
     check_old = args.check_old
+    host_address = args.host_address
+    database_name = args.database_name
+    database_user = args.database_user
 
     pypi_filter = PyPIFilter(
         in_topic, out_topic, bootstrap_servers,
-        group, check_old)
+        group, check_old, host_address, database_name, database_user)
 
     while True:
         pypi_filter.consume()
