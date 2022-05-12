@@ -97,11 +97,13 @@ class PyPIConsumer:
                         version=version,
                         created_at=self._get_now_ts())
                         self.producer.send(self.out_topic, json.dumps(output))
-                    else:
-                        print("Unexpected Error")
             else:
-                print(ercg["input"])
-                print("errror")
+                output = dict(
+                    plugin_name=self.plugin_name,
+                    input=ercg,
+                    type="Could not find product name",
+                    created_at=self._get_now_ts())
+                self.producer.send(self.err_topic, json.dumps(output))
     
     def move_source(init_path, intermediate_dir):
         files = os.listdir(init_path)
@@ -122,16 +124,6 @@ class PyPIConsumer:
         return int(datetime.datetime.now().timestamp())
 
 
-    def _produce_error(self):
-        # produce error to kafka topic
-        output = dict(
-            plugin_name=self.plugin_name,
-            input=self.release,
-            created_at=self._get_now_ts(),
-            err=self.error_msg
-        )
-        self.producer.send(self.err_topic, json.dumps(output))
-
 def get_parser():
     parser = argparse.ArgumentParser(
         """
@@ -148,11 +140,11 @@ def get_parser():
         type=str,
         help="Kafka topic to write call graphs."
     )
-    # parser.add_argument(
-    #     'err_topic',
-    #     type=str,
-    #     help="Kafka topic to write errors."
-    # )
+    parser.add_argument(
+        'err_topic',
+        type=str,
+        help="Kafka topic to write errors."
+    )
     parser.add_argument(
         'bootstrap_servers',
         type=str,
@@ -186,7 +178,7 @@ def main():
 
     in_topic = args.in_topic
     out_topic = args.out_topic
-    # err_topic = args.err_topic
+    err_topic = args.err_topic
     bootstrap_servers = args.bootstrap_servers
     group = args.group
     sleep_time = args.sleep_time
@@ -194,7 +186,7 @@ def main():
     poll_interval = args.poll_interval
 
     consumer = PyPIConsumer(
-        in_topic, out_topic, "changeME",\
+        in_topic, out_topic, err_topic,\
         source_dir, bootstrap_servers, group, poll_interval)
 
     while True:
