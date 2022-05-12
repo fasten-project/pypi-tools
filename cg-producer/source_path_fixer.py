@@ -105,6 +105,21 @@ class PyPIConsumer:
 
             if count ==10:
                 break
+    
+    def move_source(init_path, intermediate_dir):
+        files = os.listdir(init_path)
+        temp_dir = "/tmp/fasten-sources/" + intermediate_dir
+        # We use a temporary directory because a folder existing in the initial direcotry
+        # may have the same name with the destination dir, so we want to avoid this conflict
+        Path(temp_dir).mkdir(parents=True, exist_ok=True)
+        for file in files:
+            shutil.move(init_path+file, temp_dir + file)
+
+        dest_path = init_path + intermediate_dir 
+        shutil.move(temp_dir, dest_path)
+        
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
     def _get_now_ts(self):
         return int(datetime.datetime.now().timestamp())
