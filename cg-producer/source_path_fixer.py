@@ -23,6 +23,7 @@
 #
 import argparse
 import datetime
+import time
 import json
 import os
 import shutil
@@ -101,10 +102,6 @@ class PyPIConsumer:
             else:
                 print(ercg["input"])
                 print("errror")
-
-
-            if count ==10:
-                break
     
     def move_source(init_path, intermediate_dir):
         files = os.listdir(init_path)
@@ -166,21 +163,21 @@ def get_parser():
         type=str,
         help="Kafka consumer group to which the consumer belongs."
     )
-    # parser.add_argument(
-    #     'sleep_time',
-    #     type=int,
-    #     help="Time to sleep inbetween each scrape (in sec)."
-    # )
+    parser.add_argument(
+        'sleep_time',
+        type=int,
+        help="Time to sleep inbetween each scrape (in sec)."
+    )
     parser.add_argument(
         'source_dir',
         type=str,
         help="Directory where source code and call graphs will be stored."
     )
-    # parser.add_argument(
-    #     'poll_interval',
-    #     type=int,
-    #     help="Kafka poll interval"
-    # )
+    parser.add_argument(
+        'poll_interval',
+        type=int,
+        help="Kafka poll interval"
+    )
     return parser
 
 def main():
@@ -192,8 +189,9 @@ def main():
     # err_topic = args.err_topic
     bootstrap_servers = args.bootstrap_servers
     group = args.group
+    sleep_time = args.sleep_time
     source_dir = args.source_dir
-    poll_interval = 10000
+    poll_interval = args.poll_interval
 
     consumer = PyPIConsumer(
         in_topic, out_topic, "changeME",\
@@ -201,8 +199,9 @@ def main():
 
     while True:
         consumer.consume()
+        time.sleep(sleep_time)
 
 if __name__ == "__main__":
     main()
 
-# python3 source_path_fixer.py fasten.MetadataDBPythonExtension.rebalanced.out pypi.fix samos:9092  pypi_test_group /mnt/fasten/pypi/pypi/sources
+# python3 source_path_fixer.py fasten.MetadataDBPythonExtension.rebalanced.out pypi.fix 172.16.45.120:9092,172.16.45.121:9092,172.16.45.122:9092  pypi_test_group 5 /mnt/fasten/pypi/pypi/sources 100000
