@@ -25,6 +25,8 @@ import argparse
 import datetime
 import json
 import os
+import shutil
+from pathlib import Path
 
 from kafka import KafkaConsumer, KafkaProducer
 
@@ -88,7 +90,12 @@ class PyPIConsumer:
                         # move_source(source_path,file_name)
                         print("------")
 
-                       
+                        output = dict(
+                        plugin_name=self.plugin_name,
+                        product=product,
+                        version=version,
+                        created_at=self._get_now_ts())
+                        self.producer.send(self.out_topic, json.dumps(output))
                     else:
                         print("Unexpected Error")
             else:
@@ -98,6 +105,9 @@ class PyPIConsumer:
 
             if count ==10:
                 break
+
+    def _get_now_ts(self):
+        return int(datetime.datetime.now().timestamp())
 
 
     def _produce_error(self):
@@ -121,11 +131,11 @@ def get_parser():
         type=str,
         help="Kafka topic to read from."
     )
-    # parser.add_argument(
-    #     'out_topic',
-    #     type=str,
-    #     help="Kafka topic to write call graphs."
-    # )
+    parser.add_argument(
+        'out_topic',
+        type=str,
+        help="Kafka topic to write call graphs."
+    )
     # parser.add_argument(
     #     'err_topic',
     #     type=str,
@@ -163,15 +173,15 @@ def main():
     args = parser.parse_args()
 
     in_topic = args.in_topic
-    # out_topic = args.out_topic
+    out_topic = args.out_topic
     # err_topic = args.err_topic
     bootstrap_servers = args.bootstrap_servers
     group = args.group
     source_dir = args.source_dir
-    poll_interval = 3000
+    poll_interval = 10000
 
     consumer = PyPIConsumer(
-        in_topic, "changeME", "changeME",\
+        in_topic, out_topic, "changeME",\
         source_dir, bootstrap_servers, group, poll_interval)
 
     while True:
@@ -180,4 +190,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python3 source_path_fixer.py fasten.MetadataDBPythonExtension.rebalanced.out samos:9092  pypi_test_group /mnt/fasten/pypi/pypi/sources
+# python3 source_path_fixer.py fasten.MetadataDBPythonExtension.rebalanced.out pypi.fix samos:9092  pypi_test_group /mnt/fasten/pypi/pypi/sources
