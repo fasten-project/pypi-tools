@@ -31,6 +31,25 @@ from pathlib import Path
 
 from kafka import KafkaConsumer, KafkaProducer
 
+def move_source(init_path, intermediate_dir):
+    files = os.listdir(init_path)
+    dest_path = os.path.join(init_path, intermediate_dir)
+    if intermediate_dir not in files:
+        Path(dest_path).mkdir(parents=True,  exist_ok=True)
+        for file in files:
+            shutil.move(os.path.join(init_path,file), os.path.join(dest_path, file))
+    else:
+        # When the coordiante has at least one directory with the same name with the target one,
+        # we use a temporary directory to store our source code in order to avoid a conflict between the 2 directories. 
+        temp_dir = os.path.join("/tmp/fasten-sources/", intermediate_dir)
+        Path(temp_dir).mkdir(parents=True,  exist_ok=True)
+        for file in files:
+            shutil.move(os.path.join(init_path,file), os.path.join(temp_dir, file))
+
+        shutil.move(temp_dir, dest_path)
+        
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
 class PyPIConsumer:
     def __init__(self, in_topic, out_topic, err_topic,\
@@ -66,31 +85,27 @@ class PyPIConsumer:
             count +=1 
             self.consumer.commit()
             ercg = message.value
-            if ercg["input"]["payload"].get("product"):
+            if ercg["payload"].get("product"):
                 print ("{}: Consuming {}:{}".format(
                     datetime.datetime.now(),
-                    ercg["input"]["payload"]["product"],
-                    ercg["input"]["payload"]["version"]
+                    ercg["payload"]["product"],
+                    ercg["payload"]["version"]
                 ))
 
-                product = ercg["input"]["payload"]["product"]
-                version =  ercg["input"]["payload"]["version"]
+                product = ercg["payload"]["product"]
+                version =  ercg["payload"]["version"]
                 source_path = self.source_dir + "/{}/{}/{}/".format(
                     product[0], product, version)
                 if os.path.exists(source_path+"__init__.py"):
-                    for module in ercg["input"]["payload"]["modules"]["internal"]:
-                        source_file = ercg["input"]["payload"]["modules"]["internal"][module]["sourceFile"]
+                    for module in ercg["payload"]["modules"]["internal"]:
+                        source_file = ercg["payload"]["modules"]["internal"][module]["sourceFile"]
                         break
                 
                     file_path = source_path+ source_file
                     if not os.path.exists(file_path):
                         file_name = source_file.split("/")[0]
-                        print("------")
-                        print(source_file)
-                        print(source_path,file_name)
-                        # move_source(source_path,file_name)
-                        print("------")
-
+                        move_source(source_path, file_name)
+                        print("Succesfully fixed source path of", product, version)
                         output = dict(
                         plugin_name=self.plugin_name,
                         product=product,
@@ -105,21 +120,6 @@ class PyPIConsumer:
                     created_at=self._get_now_ts())
                 self.producer.send(self.err_topic, json.dumps(output))
     
-    def move_source(init_path, intermediate_dir):
-        files = os.listdir(init_path)
-        temp_dir = os.path.join("/tmp/fasten-sources/", intermediate_dir)
-        # We use a temporary directory because a folder existing in the initial direcotry
-        # may have the same name with the destination dir, so we want to avoid this conflict
-        Path(temp_dir).mkdir(parents=True, exist_ok=True)
-        for file in files:
-            shutil.move(os.path.join(init_path,file), os.path.join(temp_dir, file))
-
-        dest_path = os.path.join(init_path, intermediate_dir)
-        shutil.move(temp_dir, dest_path)
-        
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-
     def _get_now_ts(self):
         return int(datetime.datetime.now().timestamp())
 
@@ -196,4 +196,9 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python3 source_path_fixer.py fasten.MetadataDBPythonExtension.rebalanced.out pypi.fix 172.16.45.120:9092,172.16.45.121:9092,172.16.45.122:9092  pypi_test_group 5 /mnt/fasten/pypi/pypi/sources 100000
+# python3 source_path_fixer.py fasten.MetadataDBPythonExtension.rebalanced.out pypi.fix pypi.fix.err 172.16.45.120:9092,172.16.45.121:9092,172.16.45.122:9092  pypi_test_group 5 /mnt/fasten/pypi/sources 300000
+
+#  kafka-run-class kafka.tools.GetOffsetShell --broker-list samos:9092 --offsets 1 --topic  pypi.fix | awk -F ':' '{sum += $3} END {print sum}'
+#  kafka-consumer-groups --bootstrap-server samos:9092 --describe --group pypi_test
+# python3 source_path_fixer.py fasten.pycg.cvt.out fasten.pypi.sourcePathFixer.out fasten.pypi.sourcePathFixer.err delft.ewi.tudelft.nl:9092,samos.ewi.tudelft.nl:9092,goteborg.ewi.tudelft.nl:9092 pypi_fix_group 5 /mnt/fasten/pypi/pypi/sources 600000
+p
