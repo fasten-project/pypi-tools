@@ -195,10 +195,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# python3 source_path_fixer.py fasten.MetadataDBPythonExtension.rebalanced.out pypi.fix pypi.fix.err 172.16.45.120:9092,172.16.45.121:9092,172.16.45.122:9092  pypi_test_group 5 /mnt/fasten/pypi/sources 300000
-
-#  kafka-run-class kafka.tools.GetOffsetShell --broker-list samos:9092 --offsets 1 --topic  pypi.fix | awk -F ':' '{sum += $3} END {print sum}'
-#  kafka-consumer-groups --bootstrap-server samos:9092 --describe --group pypi_test
-# python3 source_path_fixer.py fasten.pycg.cvt.out fasten.pypi.sourcePathFixer.out fasten.pypi.sourcePathFixer.err delft.ewi.tudelft.nl:9092,samos.ewi.tudelft.nl:9092,goteborg.ewi.tudelft.nl:9092 pypi_fix_group 5 /mnt/fasten/pypi/pypi/sources 600000
-p
