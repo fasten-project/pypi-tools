@@ -107,14 +107,14 @@ class PyPIConsumer:
     
     def move_source(init_path, intermediate_dir):
         files = os.listdir(init_path)
-        temp_dir = "/tmp/fasten-sources/" + intermediate_dir
+        temp_dir = os.path.join("/tmp/fasten-sources/", intermediate_dir)
         # We use a temporary directory because a folder existing in the initial direcotry
         # may have the same name with the destination dir, so we want to avoid this conflict
         Path(temp_dir).mkdir(parents=True, exist_ok=True)
         for file in files:
-            shutil.move(init_path+file, temp_dir + file)
+            shutil.move(os.path.join(init_path,file), os.path.join(temp_dir, file))
 
-        dest_path = init_path + intermediate_dir 
+        dest_path = os.path.join(init_path, intermediate_dir)
         shutil.move(temp_dir, dest_path)
         
         if os.path.exists(temp_dir):
