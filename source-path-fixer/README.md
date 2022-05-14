@@ -34,6 +34,10 @@ The list of parameters are:
 - `<source_dir>`: Directory were the source code of the PyPI revisions exists.
 - `<poll_interval>`: Kafka interval between polling.
 
+Apart from fixing the source directory of some PyPI revisions,
+it will also store those revisions to an output topic.
+
+
 Example Output
 -----
 
@@ -45,7 +49,3 @@ Example Output
   "created_at": <timestamp>
 }
 ```
-
-
-Apart form fixing the source directory of some PyPI revisions,
-it will also store those revisions to an output topic.
