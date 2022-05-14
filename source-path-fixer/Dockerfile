@@ -33,6 +33,6 @@ RUN apt -yqq update && apt install -yqq\
 RUN pip3 install kafka-python
 
 
-COPY ./source_path_fixer.py /entrypoint.py
+COPY ./entrypoint.py /entrypoint.py
 
 ENTRYPOINT ["python3", "entrypoint.py"]
