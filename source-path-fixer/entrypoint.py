@@ -80,9 +80,7 @@ class PyPIConsumer:
             bootstrap_servers=self.bootstrap_servers,
             value_serializer=lambda x: x.encode('utf-8')
         )
-        count = 0
         for message in self.consumer:
-            count +=1 
             self.consumer.commit()
             ercg = message.value
             if ercg["payload"].get("product"):
