@@ -24,8 +24,6 @@
 import os
 import json
 import time
-import urllib
-import kafka
 import shutil
 import argparse
 import datetime
@@ -35,113 +33,6 @@ from pathlib import Path
 from distutils import dir_util
 
 from kafka import KafkaConsumer, KafkaProducer
-
-class CGConverter:
-    """
-    Converts FASTEN version 1 Call Graphs to Version 2
-    """
-    def __init__(self, cg):
-        self.cg = cg
-        self.new_cg = {
-            "product": cg["product"],
-            "forge": cg["forge"],
-            "nodes": None,
-            "generator": cg["generator"],
-            "depset": cg["depset"],
-            "version": cg["version"],
-            "modules": {
-                "internal": cg["modules"],
-                "external": {}
-            },
-            "graph": {
-                "internalCalls": [],
-                "externalCalls": [],
-                "resolvedCalls": []
-            },
-            "timestamp": cg["timestamp"],
-            "sourcePath": cg["sourcePath"],
-            "metadata": cg.get("metadata", {})
-        }
-        self.key_to_ns = {}
-        self.key_to_super = {}
-        self.counter = -1
-
-    def encode(self, item):
-        return urllib.parse.quote(item, safe="/().")
-
-    def add_internal_calls(self):
-        for src, dst in self.cg["graph"]["internalCalls"]:
-            self.new_cg["graph"]["internalCalls"].append([str(src), str(dst), {}])
-
-    def extract_counter(self):
-        for mod in self.new_cg["modules"]["internal"].values():
-            for key, value in mod["namespaces"].items():
-                self.key_to_ns[int(key)] = self.encode(value["namespace"])
-                self.counter = max(self.counter, int(key))
-
-    def extract_superclasses(self):
-        for key, superclasses in self.cg["cha"].items():
-            scs = []
-            # convert superClasses items to strings
-            for item in superclasses:
-                try:
-                    mint = int(item)
-                    scs.append(self.key_to_ns[mint])
-                except ValueError:
-                    scs.append(self.encode(item))
-                    self.add_external(self.encode(item))
-            self.key_to_super[int(key)] = scs
-
-    def add_external(self, item):
-        modname = item.split("/")[2]
-        if not modname in self.new_cg["modules"]["external"]:
-            self.new_cg["modules"]["external"][modname] = {
-                "sourceFile": "",
-                "namespaces": {}
-            }
-
-        # find out if the uri already exists
-        found = False
-        for k, v in self.new_cg["modules"]["external"][modname]["namespaces"].items():
-            if v["namespace"] == item:
-                cnt = int(k)
-                found = True
-                break
-
-        if not found:
-            self.counter += 1
-            cnt = self.counter
-            self.new_cg["modules"]["external"][modname]["namespaces"][str(cnt)] = {
-                "namespace": item,
-                "metadata": {}
-            }
-
-        return cnt
-
-    def add_superclasses(self):
-        for mod in self.new_cg["modules"]["internal"].values():
-            for key, value in mod["namespaces"].items():
-                if int(key) in self.key_to_super:
-                    value["metadata"]["superClasses"] = self.key_to_super[int(key)]
-                value["namespace"] = self.encode(value["namespace"])
-
-    def add_external_calls(self):
-        for src, dst in self.cg["graph"]["externalCalls"]:
-            cnt = self.add_external(self.encode(dst))
-            self.new_cg["graph"]["externalCalls"].append([str(src), str(cnt), {}])
-
-    def convert(self):
-        self.add_internal_calls()
-        self.extract_counter()
-        self.extract_superclasses()
-        self.add_superclasses()
-        self.add_external_calls()
-        self.new_cg["nodes"] = self.counter + 1
-
-    def output(self):
-        return self.new_cg
-
-
 
 class CallGraphGenerator:
     def __init__(self, out_topic, err_topic, source_dir, producer, release):
@@ -384,10 +275,6 @@ class CallGraphGenerator:
 
         return res
 
-    def _convert_cg(self, cg):
-        cgconverter = CGConverter(cg)
-        cgconverter.convert()
-        return cgconverter.output()
 
     def _produce_callgraph(self, cg_path):
         # produce call graph to kafka topic
@@ -420,14 +307,12 @@ class CallGraphGenerator:
         cg["metadata"]["num_files"] = self.num_files or -1
         cg["sourcePath"] = self.source_path.as_posix()
 
-        # convert call graph to new format
-        out_cg = self._convert_cg(cg)
 
         # store it
-        self._store_cg(out_cg)
+        self._store_cg(cg)
 
         output = dict(
-                payload=out_cg,
+                payload=cg,
                 plugin_name=self.plugin_name,
                 plugin_version=self.plugin_version,
                 input=self.release,
