@@ -35,13 +35,11 @@ from distutils import dir_util
 from kafka import KafkaConsumer, KafkaProducer
 
 class CallGraphGenerator:
-    def __init__(self, out_topic, err_topic, source_dir, producer, release):
-        self.out_topic = out_topic
-        self.err_topic = err_topic
-        self.producer = producer
+    def __init__(self, source_dir, release):
         self.release = release
         self.source_dir = Path(source_dir)
-
+        self.output = { "Status":"",
+                        "Output":""}
         self.release_msg = release
         self.product = release['product']
         self.version = release['version']
@@ -95,6 +93,7 @@ class CallGraphGenerator:
             self._produce_error()
         finally:
             self._clean_dirs()
+            return self.output
 
     def _get_now_ts(self):
         return int(datetime.datetime.now().timestamp())
@@ -307,7 +306,6 @@ class CallGraphGenerator:
         cg["metadata"]["num_files"] = self.num_files or -1
         cg["sourcePath"] = self.source_path.as_posix()
 
-
         # store it
         self._store_cg(cg)
 
@@ -319,7 +317,8 @@ class CallGraphGenerator:
                 created_at=self._get_now_ts()
         )
 
-        self.producer.send(self.out_topic, json.dumps(output))
+        self.output["Status"] = "Success"
+        self.output["Output"] = output
 
     def _store_cg(self, out_cg):
         if not self.cg_path.exists():
@@ -344,7 +343,8 @@ class CallGraphGenerator:
             created_at=self._get_now_ts(),
             err=self.error_msg
         )
-        self.producer.send(self.err_topic, json.dumps(output))
+        self.output["Status"] = "Fail"
+        self.output["Output"] = output
 
     def _execute(self, opts):
         cmd = sp.Popen(opts, stdout=sp.PIPE, stderr=sp.PIPE)
@@ -407,9 +407,13 @@ class PyPIConsumer:
                 release
             ))
 
-            generator = CallGraphGenerator(self.out_topic, self.err_topic,
-                    self.source_dir, self.producer, release)
-            generator.generate()
+            generator = CallGraphGenerator(self.source_dir, release)
+            output = generator.generate()
+
+            if output["Status"]=="Success":
+                self.producer.send(self.out_topic, json.dumps(output["Output"]))
+            elif output["Status"]=="Fail":
+                self.producer.send(self.err_topic, json.dumps(output["Output"]))
 
 def get_parser():
     parser = argparse.ArgumentParser(
