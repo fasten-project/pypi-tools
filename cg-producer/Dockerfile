@@ -39,7 +39,7 @@ RUN mkdir /cggen
 # move files
 COPY ./PyCG/ /pycg
 COPY ./entrypoint.py /cggen/entrypoint.py
-COPY ./cg_producer.py /cggen/cg_producer.py
+COPY ./pycg_producer /cggen/pycg_producer
 
 
 # install pycg and make wrapper executable

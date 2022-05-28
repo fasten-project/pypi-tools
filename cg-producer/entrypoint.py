@@ -25,7 +25,7 @@ import json
 import time
 import argparse
 import datetime
-from cg_producer import CallGraphGenerator
+from pycg_producer.producer import CallGraphGenerator
 
 from kafka import KafkaConsumer, KafkaProducer
 
