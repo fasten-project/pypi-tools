@@ -332,7 +332,7 @@ class CallGraphGenerator:
         cg_path.unlink()
 
     def _produce_error(self):
-        # produce error to kafka topic
+        # produce error
         output = dict(
             plugin_name=self.plugin_name,
             plugin_version=self.plugin_version,
