@@ -9,7 +9,7 @@ def get_long_desc():
     return desc
 
 setup(name='pycg-producer',
-      version='0.0.3',
+      version='0.0.5',
       license='Apache Software License',
       long_description=get_long_desc(),
       long_description_content_type='text/markdown',
