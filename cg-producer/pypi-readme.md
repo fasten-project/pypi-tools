@@ -1,15 +1,13 @@
-Library for generating PyPI Call Graphs through PyCG
-====================================================
+# Library for generating PyPI Call Graphs through PyCG
 
 This library can be used to produce the call graph of a package distributed through pip along with saving its
 source code and the call graph in json format in a specified directory.
 
-Usage
------
+## Usage
 
 Example usage after installing the specific package through ```pip```:
 
-``` python
+```python
 from pycg_producer.producer import CallGraphGenerator
 
 coord = { "product": "pycg-stitch",
@@ -19,5 +17,6 @@ coord = { "product": "pycg-stitch",
 generator = CallGraphGenerator("directoryName", coord)
 print(generator.generate())
 ```
-The CallGraphGenerator class recieves as input the name of the directory where the source code and the call graph json will be stored, along with a python dictionary containing the product name and version of the specific pypi coordinate. 
+The CallGraphGenerator class recieves as input the name of the directory where the source code and the call graph JSON will be stored, along with a Python dictionary containing the product name and version of the specific PyPI coordinate.
+
 *Note:* It is mandatory to provide also a ```version_timestamp``` and ```requires_dist``` fields, which can be left empty if they are not going to be used.
