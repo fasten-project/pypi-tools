@@ -29,6 +29,9 @@ from pycg_producer.producer import CallGraphGenerator
 
 from kafka import KafkaConsumer, KafkaProducer
 
+SUCCESS = "Success"
+FAIL = "Fail"
+
 class PyPIConsumer:
     def __init__(self, in_topic, out_topic, err_topic,\
                     source_dir, bootstrap_servers, group, poll_interval):
@@ -68,9 +71,9 @@ class PyPIConsumer:
             generator = CallGraphGenerator(self.source_dir, release)
             output = generator.generate()
 
-            if output["Status"]=="Success":
+            if output["Status"]==SUCCESS:
                 self.producer.send(self.out_topic, json.dumps(output["Output"]))
-            elif output["Status"]=="Fail":
+            elif output["Status"]==FAIL:
                 self.producer.send(self.err_topic, json.dumps(output["Output"]))
 
 def get_parser():
