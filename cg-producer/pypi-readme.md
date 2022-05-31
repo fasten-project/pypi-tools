@@ -1,11 +1,11 @@
 # Library for generating PyPI Call Graphs through PyCG
 
 This library can be used to produce the call graph of a package distributed through pip along with saving its
-source code and the call graph in json format in a specified directory.
+source code and the call graph in JSON format in a specified directory.
 
 ## Usage
 
-Example usage after installing the specific package through ```pip```:
+Example usage after installing the specific package through `pip`:
 
 ```python
 from pycg_producer.producer import CallGraphGenerator
