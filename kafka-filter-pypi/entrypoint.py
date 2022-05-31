@@ -55,8 +55,8 @@ class PyPIFilter:
                 user=database_user)
             return conn
         except psycopg2.Error as e:
-            print(e)
-            sys.exit(0)
+            print("Could not connect to the PostgreSQL Database:", e)
+            sys.exit(1)
     
     def _exists_in_database(self, entry):
         query = '''SELECT *
