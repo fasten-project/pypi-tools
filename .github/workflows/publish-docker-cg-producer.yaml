@@ -1,11 +1,11 @@
-name: Publish Docker Image of Fasten PyPI Filter
+name: Publish Docker Image of Fasten PyCG Producer
 
 on:
   push:
     branches:
       - main
 env:
-  IMAGE_NAME: pypi-filter
+  IMAGE_NAME: cg-producer
 
 jobs:
   push:
@@ -19,8 +19,16 @@ jobs:
       - name: Log into registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
 
+      - name: Download PyCG
+        working-directory: ./cg-producer
+        run: | 
+          git clone https://github.com/vitsalis/PyCG.git
+
+
+            
+
       - name: Build Docker image
-        working-directory: ./kafka-filter-pypi
+        working-directory: ./cg-producer
         run: docker build -t $IMAGE_NAME .
 
       - name: Push image
