@@ -47,19 +47,19 @@ class PyPIFilter:
         if self.check_old:
             self._fill_old()
 
-    def _connect(self,  host_address, database_name, database_user):
+    def _connect(self, host_address, database_name, database_user):
         try:
             conn = psycopg2.connect(
-            host=host_address,
-            dbname=database_name,
-            user=database_user)
+                host=host_address,
+                dbname=database_name,
+                user=database_user)
             return conn
         except psycopg2.Error as e:
             print(e)
             sys.exit(0)
     
     def _exists_in_database(self, entry):
-        query = ''' SELECT *
+        query = '''SELECT *
                 FROM PACKAGES
                 INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id = PACKAGE_VERSIONS.id
                 WHERE PACKAGES.package_name = %s AND PACKAGE_VERSIONS.version = %s'''
