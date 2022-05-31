@@ -3,7 +3,7 @@
 from distutils.core import setup
 
 def get_long_desc():
-    with open("pypi-readme.md", "r") as readme:
+    with open("PyPI-README.md", "r") as readme:
         desc = readme.read()
 
     return desc
