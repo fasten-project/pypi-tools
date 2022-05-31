@@ -61,8 +61,8 @@ class PyPIFilter:
     def _exists_in_database(self, entry):
         query = '''SELECT *
                 FROM PACKAGES
-                INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id = PACKAGE_VERSIONS.id
-                WHERE PACKAGES.package_name = %s AND PACKAGE_VERSIONS.version = %s'''
+                INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id=PACKAGE_VERSIONS.id
+                WHERE PACKAGES.package_name=%s AND PACKAGE_VERSIONS.version=%s'''
 
         self.cursor.execute(query,(entry["product"],entry["version"]))
         rows = self.cursor.fetchall()
