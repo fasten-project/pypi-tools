@@ -34,8 +34,8 @@ from pkg_resources import Requirement
 from kafka import KafkaConsumer, KafkaProducer
 
 class PyPIFilter:
-    def __init__(self, in_topic, out_topic, bootstrap_servers, group, check_old, host_address, database_name, database_user):
-        self.in_topic = in_topic
+    def __init__(self, in_topics, out_topic, bootstrap_servers, group, check_old, host_address, database_name, database_user):
+        self.in_topics = in_topics
         self.out_topic = out_topic
         self.bootstrap_servers = bootstrap_servers.split(",")
         self.group = group
@@ -55,7 +55,7 @@ class PyPIFilter:
             user=database_user)
             return conn
         except psycopg2.Error as e:
-            print("Unable to establish connection to the PostgreSQL Database")
+            print(e)
             sys.exit(0)
     
     def _exists_in_database(self, entry):
@@ -104,7 +104,7 @@ class PyPIFilter:
 
     def _init_kafka(self):
         self.consumer = KafkaConsumer(
-            self.in_topic,
+            *self.in_topics,
             bootstrap_servers=self.bootstrap_servers,
             # consume earliest available messages
             auto_offset_reset='earliest',
@@ -258,9 +258,9 @@ def get_parser():
         """
     )
     parser.add_argument(
-        'in_topic',
+        'in_topics',
         type=str,
-        help="Kafka topic to read from."
+        help="Kafka topics to read from, separated by a vertical bar."
     )
     parser.add_argument(
         'out_topic',
@@ -309,7 +309,7 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    in_topic = args.in_topic
+    in_topics = args.in_topics.split("|")
     out_topic = args.out_topic
     bootstrap_servers = args.bootstrap_servers
     group = args.group
@@ -320,7 +320,7 @@ def main():
     database_user = args.database_user
 
     pypi_filter = PyPIFilter(
-        in_topic, out_topic, bootstrap_servers,
+        in_topics, out_topic, bootstrap_servers,
         group, check_old, host_address, database_name, database_user)
 
     while True:
