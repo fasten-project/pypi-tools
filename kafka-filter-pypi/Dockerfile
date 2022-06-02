@@ -27,9 +27,10 @@ FROM debian:stable
 # install python3
 RUN apt -yqq update && apt install -yqq\
                         python3\
-                        python3-pip
+                        python3-pip\
+                        libpq-dev
 
-RUN pip3 install kafka-python python-dateutil
+RUN pip3 install kafka-python python-dateutil psycopg2
 
 # create dirs
 RUN mkdir /filter

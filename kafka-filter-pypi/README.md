@@ -2,7 +2,7 @@ Kafka Filter for PyPI
 =====================
 
 Consumes PyPI packaging information in the
-[Warehouse](https://warehouse.readthedocs.io/) format from a kafka topic
+[Warehouse](https://warehouse.readthedocs.io/) format from multiple kafka topics
 and produces unique package-version tuples into another kafka topic.
 
 Usage
@@ -11,14 +11,14 @@ Usage
 ```
 >>> docker build -t pypi-filter .
 >>> docker run net=host -it pypi-filter\
-        <input_topic> <out_topic> <comma_separated_servers>\
+        <input_topics> <out_topic> <comma_separated_servers>\
         <consumer_group> <sleep_timeout> [--check-old]
 ```
 
 The list of parameters are:
 
-- `<input_topic>`: The kafka topic from which PyPI packaging information will
-  be consumed.
+- `<input_topics>`: A list of kafka topics from which PyPI packaging information will
+  be consumed, separated by a vertical bar. 
 - `<out_topic>`: The kafka topic where the unique package-version tuples will
   be stored.
 - `<comma_separated_servers>`: Thes list of kafka servers in use, separated by

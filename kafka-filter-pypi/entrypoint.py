@@ -26,22 +26,49 @@ import json
 import argparse
 import datetime
 import dateutil.parser
+import psycopg2
+import sys
 
 from pkg_resources import Requirement
 
 from kafka import KafkaConsumer, KafkaProducer
 
 class PyPIFilter:
-    def __init__(self, in_topic, out_topic, bootstrap_servers, group, check_old):
-        self.in_topic = in_topic
+    def __init__(self, in_topics, out_topic, bootstrap_servers, group, check_old, host_address, database_name, database_user):
+        self.in_topics = in_topics
         self.out_topic = out_topic
         self.bootstrap_servers = bootstrap_servers.split(",")
         self.group = group
         self.check_old = check_old
+        self.postgresql_db = self._connect(host_address, database_name, database_user)
+        self.cursor = self.postgresql_db.cursor()
 
         self.packages = {}
         if self.check_old:
             self._fill_old()
+
+    def _connect(self, host_address, database_name, database_user):
+        try:
+            conn = psycopg2.connect(
+                host=host_address,
+                dbname=database_name,
+                user=database_user)
+            return conn
+        except psycopg2.Error as e:
+            print("Could not connect to the PostgreSQL Database:", e)
+            sys.exit(1)
+    
+    def _exists_in_database(self, entry):
+        query = '''SELECT *
+                FROM PACKAGES
+                INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id=PACKAGE_VERSIONS.id
+                WHERE PACKAGES.package_name=%s AND PACKAGE_VERSIONS.version=%s'''
+
+        self.cursor.execute(query,(entry["product"],entry["version"]))
+        rows = self.cursor.fetchall()
+        if not rows:
+            return False
+        return True
 
     def consume(self):
         self._init_kafka()
@@ -52,18 +79,18 @@ class PyPIFilter:
                 datetime.datetime.now(),
                 package["title"]
             ))
-
             for entry in self._extract(package):
-                if not self._exists(entry):
+                if not self._exists_in_dictionary(entry):
                     self._store(entry)
-                    self.produce(entry)
+                    if not self._exists_in_database(entry):
+                        self.produce(entry)
                 else:
                     print ("{} already exists".format(entry))
 
     def produce(self, entry):
         self.producer.send(self.out_topic, json.dumps(entry))
 
-    def _exists(self, entry):
+    def _exists_in_dictionary(self, entry):
         if not entry["product"] in self.packages:
             return False
         if not entry["version"] in self.packages[entry["product"]]:
@@ -77,7 +104,7 @@ class PyPIFilter:
 
     def _init_kafka(self):
         self.consumer = KafkaConsumer(
-            self.in_topic,
+            *self.in_topics,
             bootstrap_servers=self.bootstrap_servers,
             # consume earliest available messages
             auto_offset_reset='earliest',
@@ -103,29 +130,38 @@ class PyPIFilter:
         )
         for message in consumer:
             pkg = message.value
-            if not self._exists(pkg):
+            if not self._exists_in_dictionary(pkg):
                 self._store(pkg)
 
     def _extract(self, package):
         try:
+            is_ingested = True if "ingested" in package else False
             pkg_name = package["project"]["info"]["name"]
             requires_dist = package["project"]["info"]["requires_dist"]
             releases = package["project"]["releases"]
         except KeyError:
             print ("Could not retrieve packaging info from {}".format(json.dumps(package)))
             return
-
+        if not requires_dist:
+            requires_dist = []
         requires_dist = self._parse_requires(requires_dist)
         for release in releases:
-            if not release.get("version", None) or\
-                    not release.get("releases", None):
-                continue
-
-            version = release["version"]
+            if is_ingested:
+                version = release
+                if not releases.get(version, None):
+                    continue
+                release_list = releases[version]
+            else:
+                if not release.get("version", None) or\
+                        not release.get("releases", None):
+                    continue
+                version = release["version"]
+                release_list = release["releases"]
+            
             ts = float("inf")
 
             # get smallest value for timestamp
-            for r in release["releases"]:
+            for r in release_list:
                 if not r.get("upload_time", None):
                     continue
 
@@ -222,9 +258,9 @@ def get_parser():
         """
     )
     parser.add_argument(
-        'in_topic',
+        'in_topics',
         type=str,
-        help="Kafka topic to read from."
+        help="Kafka topics to read from, separated by a vertical bar."
     )
     parser.add_argument(
         'out_topic',
@@ -240,6 +276,21 @@ def get_parser():
         'group',
         type=str,
         help="Kafka consumer group to which the consumer belongs."
+    )
+    parser.add_argument(
+        'host_address',
+        type=str,
+        help="Host address of the PostgreSQL Database"
+    )
+    parser.add_argument(
+        'database_name',
+        type=str,
+        help="Name of the PostgreSQL database to connect"
+    )
+    parser.add_argument(
+        'database_user',
+        type=str,
+        help="Name of the name used to authenticate the database connection"
     )
     parser.add_argument(
         'sleep_time',
@@ -258,16 +309,19 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
 
-    in_topic = args.in_topic
+    in_topics = args.in_topics.split("|")
     out_topic = args.out_topic
     bootstrap_servers = args.bootstrap_servers
     group = args.group
     sleep_time = args.sleep_time
     check_old = args.check_old
+    host_address = args.host_address
+    database_name = args.database_name
+    database_user = args.database_user
 
     pypi_filter = PyPIFilter(
-        in_topic, out_topic, bootstrap_servers,
-        group, check_old)
+        in_topics, out_topic, bootstrap_servers,
+        group, check_old, host_address, database_name, database_user)
 
     while True:
         pypi_filter.consume()
