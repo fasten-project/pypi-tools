@@ -117,6 +117,9 @@ class CallGraphGenerator:
 
         items = list(self.downloads_dir.iterdir())
         if len(items) != 1:
+            for file in items:
+                if file.startswith("self.product"):
+                    return file
             self._format_error(err_phase,\
                 'Expecting a single downloaded item {}'.format(str(items)))
             raise CallGraphGeneratorError()
