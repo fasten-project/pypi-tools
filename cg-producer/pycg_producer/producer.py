@@ -118,7 +118,7 @@ class CallGraphGenerator:
         items = list(self.downloads_dir.iterdir())
         if len(items) != 1:
             for file in items:
-                if file.startswith("self.product"):
+                if (file.startswith(self.product) | file.startswith(self.product.replace("-", "_"))):
                     return file
             self._format_error(err_phase,\
                 'Expecting a single downloaded item {}'.format(str(items)))
