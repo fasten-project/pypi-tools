@@ -174,8 +174,8 @@ class CallGraphGenerator:
                 nfiles = len(list(d.glob('**/*.py')))
                 if nfiles == 0:
                     shutil.rmtree(d.as_posix())
-
-        items = list(self.untar_dir.iterdir())
+        items_temp = list(self.untar_dir.iterdir())
+        items = [val for val in items_temp if ((not str(val).endswith(".data")) & (not str(val).endswith(".pth")) & (not str(val).endswith("/tests"))& (not str(val).endswith("/docs")))]
         if len(items) != 1:
             # return the item with the same name as the product
             prod_replaced = ''
