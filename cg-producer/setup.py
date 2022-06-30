@@ -9,7 +9,7 @@ def get_long_desc():
     return desc
 
 setup(name='pycg-producer',
-      version='0.0.5',
+      version='0.0.6',
       license='Apache Software License',
       long_description=get_long_desc(),
       long_description_content_type='text/markdown',
@@ -19,5 +19,5 @@ setup(name='pycg-producer',
       url='https://github.com/fasten-project/pypi-tools/tree/main/cg-producer',
       packages=['pycg_producer'],
       include_package_data=True,
-      install_requires=['pycg==0.0.5'],
+      install_requires=['pycg>=0.0.6'],
      )

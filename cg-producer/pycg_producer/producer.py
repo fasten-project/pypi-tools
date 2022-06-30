@@ -287,7 +287,7 @@ class CallGraphGenerator:
                 cg = json.load(f)
             except Exception:
                 self._format_error('producer',\
-                    'Call graph path does is not JSON formatted {}. Contents {}'.format(cg_path.as_posix(), f.read()))
+                    'Call graph is not JSON formatted {}. Contents {}'.format(cg_path.as_posix(), f.read()))
                 raise CallGraphGeneratorError()
 
         # PyCG must produce a call graph with the key "depset"
