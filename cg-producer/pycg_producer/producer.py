@@ -239,18 +239,17 @@ class CallGraphGenerator:
         ] + files_list
 
         time_started = datetime.datetime.now().timestamp()
-        try: 
-            out, err = self._execute(cmd)
-            time_finished = datetime.datetime.now().timestamp()
-        except Exception as e:
-            self._format_error('generation', str(e))
+        result = self._execute_with_benchmark(cmd)
+        time_finished = datetime.datetime.now().timestamp()
+        if result["process"]["stderr_data"]:
+            self._format_error('generation', result["process"]["stderr_data"].strip())
             raise CallGraphGeneratorError()
 
         if not self.out_file.exists():
-            self._format_error('generation', err.decode('utf-8'))
+            self._format_error('generation', result["process"]["stderr_data"].strip())
             raise CallGraphGeneratorError()
         self.elapsed = format(time_finished-time_started,".2f")
-        self.max_rss = self._get_max_rss(cmd)
+        self.max_rss = round(result["memory"]["max"]/1000)
         return self.out_file
 
     def _get_python_files(self, package):
@@ -268,10 +267,10 @@ class CallGraphGenerator:
         return res
 
 
-    def _get_max_rss(cmd):
+    def _execute_with_benchmark(self, cmd):
         benchmark_results = cmdbench.benchmark_command(' '.join(map(str, cmd)))
         first_iteration_result = benchmark_results.get_first_iteration()
-        return round(first_iteration_result["memory"]["max"]/1000)
+        return first_iteration_result
 
     def _produce_callgraph(self, cg_path):
         # produce call graph to kafka topic
