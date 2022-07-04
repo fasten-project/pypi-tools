@@ -26,6 +26,7 @@ import json
 import shutil
 import datetime
 import subprocess as sp
+import cmdbench
 
 from pathlib import Path
 from distutils import dir_util
@@ -237,13 +238,10 @@ class CallGraphGenerator:
             '--output', self.out_file.as_posix()
         ] + files_list
 
-        timing = [
-            "/usr/bin/time",
-            "-f", "secs=%e\nmem=%M"
-        ]
-
-        try:
-            out, err = self._execute(timing + cmd)
+        time_started = datetime.datetime.now().timestamp()
+        try: 
+            out, err = self._execute(cmd)
+            time_finished = datetime.datetime.now().timestamp()
         except Exception as e:
             self._format_error('generation', str(e))
             raise CallGraphGeneratorError()
@@ -251,13 +249,8 @@ class CallGraphGenerator:
         if not self.out_file.exists():
             self._format_error('generation', err.decode('utf-8'))
             raise CallGraphGeneratorError()
-
-        for l in err.decode('utf-8').splitlines():
-            if l.strip().startswith("secs"):
-                self.elapsed = float(l.split("=")[-1].strip())
-            if l.strip().startswith("mem"):
-                self.max_rss = int(l.split("=")[-1].strip())
-
+        self.elapsed = format(time_finished-time_started,".2f")
+        self.max_rss = self._get_max_rss(cmd)
         return self.out_file
 
     def _get_python_files(self, package):
@@ -274,6 +267,11 @@ class CallGraphGenerator:
 
         return res
 
+
+    def _get_max_rss(cmd):
+        benchmark_results = cmdbench.benchmark_command(' '.join(map(str, cmd)))
+        first_iteration_result = benchmark_results.get_first_iteration()
+        return round(first_iteration_result["memory"]["max"]/1000)
 
     def _produce_callgraph(self, cg_path):
         # produce call graph to kafka topic
