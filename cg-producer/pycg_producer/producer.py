@@ -238,9 +238,8 @@ class CallGraphGenerator:
             '--output', self.out_file.as_posix()
         ] + files_list
 
-        time_started = datetime.datetime.now().timestamp()
         result = self._execute_with_benchmark(cmd)
-        time_finished = datetime.datetime.now().timestamp()
+
         if result["process"]["stderr_data"]:
             self._format_error('generation', result["process"]["stderr_data"].strip())
             raise CallGraphGeneratorError()
@@ -248,7 +247,7 @@ class CallGraphGenerator:
         if not self.out_file.exists():
             self._format_error('generation', result["process"]["stderr_data"].strip())
             raise CallGraphGeneratorError()
-        self.elapsed = format(time_finished-time_started,".2f")
+        self.elapsed = result["process"]["execution_time"]
         self.max_rss = round(result["memory"]["max"]/1000)
         return self.out_file
 
