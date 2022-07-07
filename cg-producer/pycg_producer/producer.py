@@ -252,7 +252,7 @@ class CallGraphGenerator:
         return self.out_file
 
     def _get_python_files(self, package):
-        return [x.resolve().as_posix().strip() for x in package.glob("**/*.py")]
+        return [x.as_posix().strip() for x in package.glob("**/*.py")]
 
     def _get_lines_of_code(self, files_list):
         res = 0
