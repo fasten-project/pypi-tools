@@ -53,9 +53,9 @@ bin/kafka-topics.sh --create --bootstrap-server localhost:9092 --replication-fac
 bin/kafka-topics.sh --create --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1 --topic error
 
 # add packages to package_list topic
-echo '{"product": "numpy", "version": "1.18.2", "version_timestamp": "2000"}
-    {"product": "sqlparse", "version": "0.3.1", "version_timestamp": "3000"}
-    {"product": "numpy", "version": "100.18.2", "version_timestamp": "2000"}\n' | \
+echo '{"product": "numpy", "version": "1.18.2", "version_timestamp": "2000", 'requires_dist': []}
+    {"product": "sqlparse", "version": "0.3.1", "version_timestamp": "3000", 'requires_dist': []}
+    {"product": "numpy", "version": "100.18.2", "version_timestamp": "2000", 'requires_dist': []}\n' | \
     bin/kafka-console-producer.sh --broker-list localhost:9092 --topic package_list
 
 docker run \
