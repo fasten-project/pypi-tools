@@ -38,12 +38,15 @@ RUN mkdir /cggen
 
 # move files
 COPY ./PyCG/ /pycg
+COPY ./PyPI-README.md /cggen/PyPI-README.md
+COPY ./setup.py /cggen/setup.py
 COPY ./entrypoint.py /cggen/entrypoint.py
 COPY ./pycg_producer /cggen/pycg_producer
 
-
 # install pycg and make wrapper executable
 RUN cd /pycg && python3 setup.py install
+
+RUN cd /cggen && python3 setup.py install
 
 WORKDIR /cggen
 ENTRYPOINT ["python3", "entrypoint.py"]
