@@ -31,7 +31,7 @@ RUN apt -yqq update && apt install -yqq\
                         unzip\
 			time
 
-RUN pip3 install kafka-python
+RUN pip3 install kafka-python cmdbench
 
 # create dirs
 RUN mkdir /cggen
