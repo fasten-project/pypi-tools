@@ -61,7 +61,7 @@ class PyPIFilter:
     def _exists_in_database(self, entry):
         query = '''SELECT *
                 FROM PACKAGES
-                INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id=PACKAGE_VERSIONS.id
+                INNER JOIN PACKAGE_VERSIONS ON PACKAGES.id=PACKAGE_VERSIONS.package_id
                 WHERE PACKAGES.package_name=%s AND PACKAGE_VERSIONS.version=%s'''
 
         self.cursor.execute(query,(entry["product"],entry["version"]))
@@ -73,9 +73,10 @@ class PyPIFilter:
     def consume(self):
         self._init_kafka()
 
+        # todo: separate message consuming logic for lazy ingestion and batch crawl here
         for message in self.consumer:
             package = message.value
-            print ("{}: Consuming {}".format(
+            print("{}: Consuming {}".format(
                 datetime.datetime.now(),
                 package["title"]
             ))
@@ -85,7 +86,7 @@ class PyPIFilter:
                     if not self._exists_in_database(entry):
                         self.produce(entry)
                 else:
-                    print ("{} already exists".format(entry))
+                    print("{} already exists".format(entry))
 
     def produce(self, entry):
         self.producer.send(self.out_topic, json.dumps(entry))
@@ -137,49 +138,53 @@ class PyPIFilter:
         try:
             is_ingested = True if "ingested" in package else False
             pkg_name = package["project"]["info"]["name"]
+            pkg_version = package["title"].split()[1]
             requires_dist = package["project"]["info"]["requires_dist"]
             releases = package["project"]["releases"]
         except KeyError:
-            print ("Could not retrieve packaging info from {}".format(json.dumps(package)))
+            print("Could not retrieve packaging info from {}".format(json.dumps(package)))
             return
         if not requires_dist:
             requires_dist = []
         requires_dist = self._parse_requires(requires_dist)
-        for release in releases:
-            if is_ingested:
-                version = release
-                if not releases.get(version, None):
-                    continue
-                release_list = releases[version]
-            else:
+        release_list = []
+        version = None
+        # for lazy_ingestion? project json see https://warehouse.pypa.io/api-reference/json.html
+        if is_ingested:
+            version = pkg_version
+            print("ingesting package {}".format(version))
+            release_list = releases[version]
+        #  for batch crawl? project json see `example_input.json`
+        else:
+            for release in releases:
                 if not release.get("version", None) or\
                         not release.get("releases", None):
                     continue
                 version = release["version"]
                 release_list = release["releases"]
-            
-            ts = float("inf")
 
-            # get smallest value for timestamp
-            for r in release_list:
-                if not r.get("upload_time", None):
-                    continue
+        ts = float("inf")
 
-                candts = int(dateutil.parser.isoparse(r["upload_time"]).timestamp())
-                if candts < ts:
-                    ts = candts
-
-            if ts == float("inf"):
-                print ("Did not find a valid timestamp on {}".format(releases))
+        # get smallest value for timestamp
+        for r in release_list:
+            if not r.get("upload_time", None):
                 continue
 
+            candts = int(dateutil.parser.isoparse(r["upload_time"]).timestamp())
+            if candts < ts:
+                ts = candts
+
+        if ts == float("inf"):
+            print("Did not find a valid timestamp on {}".format(releases))
+
+        if version is not None:
             entry = {
                 "product": pkg_name,
                 "version": version,
                 "version_timestamp": ts,
                 "requires_dist": requires_dist
             }
-            yield entry
+        yield entry
 
     def _parse_requires(self, requires):
         parsed = []
@@ -305,6 +310,7 @@ def get_parser():
     )
     return parser
 
+
 def main():
     parser = get_parser()
     args = parser.parse_args()
@@ -328,6 +334,7 @@ def main():
 
         time.sleep(sleep_time)
         check_old = False
+
 
 if __name__ == "__main__":
     main()
