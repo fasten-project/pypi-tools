@@ -73,7 +73,6 @@ class PyPIFilter:
     def consume(self):
         self._init_kafka()
 
-        # todo: separate message consuming logic for lazy ingestion and batch crawl here
         for message in self.consumer:
             package = message.value
             print("{}: Consuming {}".format(
